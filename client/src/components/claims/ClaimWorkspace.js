@@ -17,6 +17,7 @@ import { TasksTab } from './workspace/TasksTab.js'
 import { ApprovalsTab, PaymentsTab, ReservesTab } from './workspace/FinancialTabs.js'
 import { ComplianceTab } from './workspace/ComplianceTab.js'
 import { ActivityTab } from './workspace/ActivityTab.js'
+import { AutomationTab } from './workspace/AutomationTab.js'
 import { formatMoney, formatRelative } from '@/utils/format.js'
 
 const TAB_COMPONENTS = {
@@ -29,6 +30,7 @@ const TAB_COMPONENTS = {
   approvals: ApprovalsTab,
   compliance: ComplianceTab,
   payments: PaymentsTab,
+  automation: AutomationTab,
   activity: ActivityTab,
 }
 

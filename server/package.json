@@ -13,6 +13,7 @@
     "provision:dev": "node scripts/provision-dev.js"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.131.0",
     "@electric-sql/pglite": "^0.5.8",
     "@supabase/supabase-js": "~2.109.0",
     "cors": "^2.8.5",

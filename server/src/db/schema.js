@@ -21,6 +21,8 @@ export const TABLES = {
   notifications: {},
   audit_logs: { json: ['before_data', 'after_data', 'metadata'] },
   claim_status_transitions: {},
+  ai_runs: { json: ['result'] },
+  claim_reminders: {},
 }
 
 export function assertTable(table) {

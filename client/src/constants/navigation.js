@@ -1,6 +1,7 @@
 import {
-  Bell,
   BarChart3,
+  BellRing,
+  Contact,
   Briefcase,
   ClipboardList,
   FilePlus2,
@@ -32,9 +33,8 @@ export const ROLE_HOME = {
   COMPLIANCE_OFFICER: '/compliance',
   DATA_ADMIN: '/admin/users',
   AUDITOR: '/audit',
+  CUSTOMER_RECORDS_ADMIN: '/customer-records',
 }
-
-const notifications = { to: '/notifications', label: 'Notifications', icon: Bell, badge: 'notifications' }
 
 /** Role-specific navigation; the sidebar shows the active workspace's list. */
 export const NAVIGATION = {
@@ -45,25 +45,22 @@ export const NAVIGATION = {
     { to: '/customer/claims/new', label: 'New Claim', icon: FilePlus2 },
     { to: '/customer/requests', label: 'Information Requests', icon: Inbox },
     { to: '/customer/payments', label: 'Settlements & Payments', icon: Wallet },
-    notifications,
   ],
   [R.CLAIMS_OPERATIONS]: [
     { to: '/operations', label: 'Dashboard', icon: LayoutDashboard },
     { to: '/claims', label: 'Claims Queue', icon: ClipboardList },
     { to: '/tasks', label: 'Tasks', icon: ListChecks },
+    { to: '/automation/reminders', label: 'Reminders', icon: BellRing },
     { to: '/reports', label: 'Reports', icon: BarChart3 },
-    notifications,
   ],
   [R.DOCUMENT_REVIEWER]: [
     { to: '/document-review', label: 'Review Queue', icon: FileSearch },
     { to: '/claims', label: 'Claims', icon: ClipboardList },
     { to: '/tasks', label: 'My Tasks', icon: ListChecks },
-    notifications,
   ],
   [R.CLAIMS_ADJUSTER]: [
     { to: '/adjuster', label: 'My Assigned Claims', icon: Briefcase },
     { to: '/tasks', label: 'My Tasks', icon: ListChecks },
-    notifications,
   ],
   [R.CLAIMS_MANAGER]: [
     { to: '/manager', label: 'Team Workload', icon: LayoutDashboard, end: true },
@@ -74,9 +71,9 @@ export const NAVIGATION = {
     { to: '/claims', label: 'All Claims', icon: ClipboardList },
     { to: '/compliance', label: 'Compliance Queue', icon: ShieldCheck },
     { to: '/tasks', label: 'Tasks', icon: ListChecks },
+    { to: '/automation/reminders', label: 'Reminders', icon: BellRing },
     { to: '/reports', label: 'Reports', icon: BarChart3 },
     { to: '/audit', label: 'Audit Log', icon: ScrollText },
-    notifications,
   ],
   [R.PAYMENT_OPERATIONS]: [
     { to: '/payments', label: 'Awaiting Payment', icon: Wallet, end: true },
@@ -84,7 +81,6 @@ export const NAVIGATION = {
     { to: '/payments/history', label: 'Payment History', icon: Receipt },
     { to: '/tasks', label: 'Tasks', icon: ListChecks },
     { to: '/reports', label: 'Reports', icon: BarChart3 },
-    notifications,
   ],
   [R.COMPLIANCE_OFFICER]: [
     { to: '/compliance', label: 'Compliance Queue', icon: ShieldCheck },
@@ -93,13 +89,11 @@ export const NAVIGATION = {
     { to: '/manager/decisions', label: 'Approval Decisions', icon: History },
     { to: '/reports', label: 'Reports', icon: BarChart3 },
     { to: '/audit', label: 'Audit Log', icon: ScrollText },
-    notifications,
   ],
   [R.DATA_ADMIN]: [
     { to: '/admin/users', label: 'Users & Roles', icon: UserCog },
     { to: '/reports', label: 'Reports', icon: BarChart3 },
     { to: '/audit', label: 'Audit Log', icon: ScrollText },
-    notifications,
   ],
   [R.AUDITOR]: [
     { to: '/audit', label: 'Audit Log', icon: ScrollText },
@@ -107,7 +101,9 @@ export const NAVIGATION = {
     { to: '/manager/decisions', label: 'Approval Decisions', icon: History },
     { to: '/payments/history', label: 'Payments', icon: Receipt },
     { to: '/reports', label: 'Reports', icon: BarChart3 },
-    notifications,
+  ],
+  [R.CUSTOMER_RECORDS_ADMIN]: [
+    { to: '/customer-records', label: 'Customer Records', icon: Contact },
   ],
 }
 
@@ -128,4 +124,6 @@ export const ROUTE_ROLES = {
   reports: [R.CLAIMS_OPERATIONS, R.CLAIMS_MANAGER, R.COMPLIANCE_OFFICER, R.PAYMENT_OPERATIONS, R.DATA_ADMIN, R.AUDITOR],
   audit: [R.AUDITOR, R.COMPLIANCE_OFFICER, R.CLAIMS_MANAGER, R.DATA_ADMIN],
   admin: [R.DATA_ADMIN],
+  customerRecords: [R.CUSTOMER_RECORDS_ADMIN],
+  automation: [R.CLAIMS_OPERATIONS, R.CLAIMS_MANAGER, R.AUDITOR],
 }

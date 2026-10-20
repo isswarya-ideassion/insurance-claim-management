@@ -29,4 +29,5 @@ export const DEMO_ACCOUNTS = [
   { label: 'Compliance Officer', email: 'compliance.carlos@demo.harborpoint.test' },
   { label: 'Data Admin', email: 'admin.dana@demo.harborpoint.test' },
   { label: 'Auditor', email: 'auditor.ade@demo.harborpoint.test' },
+  { label: 'Customer Records Admin', email: 'records.rosa@demo.harborpoint.test' },
 ]

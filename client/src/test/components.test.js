@@ -4,6 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { ClaimStatusBadge } from '@/components/common/StatusBadge.js'
 import { DataTable } from '@/components/common/DataTable.js'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog.js'
+import { ErrorBoundary } from '@/components/common/ErrorBoundary.js'
 import { claimFormSchema, toDraftPayload, stepForField } from '@/schemas/claimSchemas.js'
 
 const authState = { status: 'authenticated', user: { roles: ['CLAIMS_ADJUSTER'] }, activeRole: 'CLAIMS_ADJUSTER' }
@@ -136,5 +137,40 @@ describe('claim form schema', () => {
   it('maps server field errors back to wizard steps', () => {
     expect(stepForField('incidentDescription')).toBe(2)
     expect(stepForField('contactEmail')).toBe(5)
+  })
+})
+
+describe('ErrorBoundary', () => {
+  function Boom({ message }) {
+    throw new Error(message)
+  }
+
+  it('shows an error panel with retry instead of a blank page when a page crashes', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const { rerender } = render(
+      <ErrorBoundary resetKey="/a">
+        <Boom message="rows.map is not a function" />
+      </ErrorBoundary>,
+    )
+    expect(screen.getByRole('alert')).toHaveTextContent('This page ran into a problem')
+    expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument()
+    rerender(
+      <ErrorBoundary resetKey="/b">
+        <p>next page</p>
+      </ErrorBoundary>,
+    )
+    expect(screen.getByText('next page')).toBeInTheDocument()
+    console.error.mockRestore()
+  })
+
+  it('explains a failed lazy page load', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    render(
+      <ErrorBoundary>
+        <Boom message="Failed to fetch dynamically imported module: /src/pages/NotificationsPage.js" />
+      </ErrorBoundary>,
+    )
+    expect(screen.getByRole('alert')).toHaveTextContent('This page could not be loaded')
+    console.error.mockRestore()
   })
 })

@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import * as DialogPrimitive from '@radix-ui/react-dialog'
-import { Bell, ChevronDown, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Search, UserCog } from 'lucide-react'
+import { Bell, ChevronDown, LogOut, Menu, Search, UserCog } from 'lucide-react'
 import { ROLE_LABELS } from '@shared/constants.js'
 import { useAuth } from '@/context/AuthContext.js'
 import { NAVIGATION, ROLE_HOME } from '@/constants/navigation.js'
 import { notificationsService } from '@/services/workflowService.js'
 import { ModeBanner } from '@/components/common/ModeBanner.js'
-import { Avatar, Tooltip } from '@/components/ui/misc.js'
+import { ErrorBoundary } from '@/components/common/ErrorBoundary.js'
+import { Avatar } from '@/components/ui/misc.js'
 import { Button } from '@/components/ui/button.js'
 import { Input } from '@/components/ui/input.js'
 import { SheetContent } from '@/components/ui/dialog.js'
@@ -23,34 +24,30 @@ import {
 } from '@/components/ui/dropdown-menu.js'
 import { cn } from '@/lib/utils.js'
 
-const COLLAPSE_KEY = 'harborpoint.sidebarCollapsed'
 export const NOTIFICATIONS_CHANGED = 'harborpoint:notifications-changed'
 
-function Brand({ collapsed }) {
+function Brand() {
   return (
-    <div className={cn('flex h-14 items-center gap-2.5 px-4', collapsed && 'justify-center px-0')}>
+    <div className="flex h-14 items-center gap-2.5 px-4">
       <svg viewBox="0 0 32 32" className="size-8 shrink-0" aria-hidden="true">
         <rect width="32" height="32" rx="8" fill="#13325c" />
         <path d="M8 20c3-1.5 5-1.5 8 0s5 1.5 8 0" stroke="#2dd4bf" strokeWidth="2.4" fill="none" strokeLinecap="round" />
         <path d="M16 6l7 3v5c0 3.5-3 6-7 7-4-1-7-3.5-7-7V9l7-3z" fill="none" stroke="#e2e8f0" strokeWidth="2" />
       </svg>
-      {!collapsed && (
-        <div className="leading-tight">
-          <p className="text-sm font-semibold text-white">HarborPoint</p>
-          <p className="text-[11px] text-sidebar-muted">Claims Operations Hub</p>
-        </div>
-      )}
+      <div className="leading-tight">
+        <p className="text-sm font-semibold text-white">HarborPoint</p>
+        <p className="text-[11px] text-sidebar-muted">Claims Operations Hub</p>
+      </div>
     </div>
   )
 }
 
-function NavList({ items, collapsed, unread, onNavigate }) {
+function NavList({ items, onNavigate }) {
   return (
     <nav aria-label="Main navigation" className="flex-1 space-y-0.5 overflow-y-auto px-2 py-3">
       {items.map((item) => {
         const Icon = item.icon
-        const count = item.badge === 'notifications' ? unread : 0
-        const link = (
+        return (
           <NavLink
             key={item.to}
             to={item.to}
@@ -60,7 +57,6 @@ function NavList({ items, collapsed, unread, onNavigate }) {
               cn(
                 'group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-sidebar-foreground transition-colors hover:bg-sidebar-active/70 hover:text-white',
                 isActive && 'bg-sidebar-active text-white',
-                collapsed && 'justify-center px-0',
               )
             }
           >
@@ -68,23 +64,10 @@ function NavList({ items, collapsed, unread, onNavigate }) {
               <>
                 {isActive && <span className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-sidebar-accent" aria-hidden="true" />}
                 <Icon className={cn('size-4 shrink-0', isActive ? 'text-sidebar-accent' : 'text-sidebar-muted group-hover:text-white')} aria-hidden="true" />
-                {!collapsed && <span className="truncate">{item.label}</span>}
-                {count > 0 && (
-                  <span className={cn('tabular rounded-full bg-sidebar-accent px-1.5 text-[11px] font-semibold text-slate-900', collapsed ? 'absolute right-1 top-0.5' : 'ml-auto')}>
-                    {count > 99 ? '99+' : count}
-                  </span>
-                )}
-                {collapsed && <span className="sr-only">{item.label}</span>}
+                <span className="truncate">{item.label}</span>
               </>
             )}
           </NavLink>
-        )
-        return collapsed ? (
-          <Tooltip key={item.to} content={item.label} side="right">
-            <div>{link}</div>
-          </Tooltip>
-        ) : (
-          link
         )
       })}
     </nav>
@@ -95,7 +78,6 @@ export function AppShell() {
   const { user, activeRole, setActiveRole, logout, can } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
-  const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSE_KEY) === '1')
   const [mobileOpen, setMobileOpen] = useState(false)
   const [unread, setUnread] = useState(0)
   const [search, setSearch] = useState('')
@@ -117,13 +99,6 @@ export function AppShell() {
 
   useEffect(() => setMobileOpen(false), [location.pathname])
 
-  function toggleCollapsed() {
-    setCollapsed((c) => {
-      localStorage.setItem(COLLAPSE_KEY, c ? '0' : '1')
-      return !c
-    })
-  }
-
   function switchRole(role) {
     setActiveRole(role)
     navigate(ROLE_HOME[role])
@@ -143,21 +118,9 @@ export function AppShell() {
     <div className="flex h-full flex-col">
       <ModeBanner />
       <div className="flex min-h-0 flex-1">
-        <aside className={cn('hidden shrink-0 flex-col border-r border-sidebar-border bg-sidebar transition-[width] duration-200 lg:flex', collapsed ? 'w-[72px]' : 'w-64')}>
-          <Brand collapsed={collapsed} />
-          <NavList items={items} collapsed={collapsed} unread={unread} />
-          <div className="border-t border-sidebar-border p-2">
-            <button
-              type="button"
-              onClick={toggleCollapsed}
-              className={cn('flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-sidebar-muted hover:bg-sidebar-active/70 hover:text-white', collapsed && 'justify-center px-0')}
-              aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-              aria-expanded={!collapsed}
-            >
-              {collapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
-              {!collapsed && 'Collapse'}
-            </button>
-          </div>
+        <aside className="hidden w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar lg:flex">
+          <Brand />
+          <NavList items={items} />
         </aside>
 
         <DialogPrimitive.Root open={mobileOpen} onOpenChange={setMobileOpen}>
@@ -165,7 +128,7 @@ export function AppShell() {
             <DialogPrimitive.Title className="sr-only">Navigation</DialogPrimitive.Title>
             <div className="flex h-full flex-col">
               <Brand />
-              <NavList items={items} unread={unread} onNavigate={() => setMobileOpen(false)} />
+              <NavList items={items} onNavigate={() => setMobileOpen(false)} />
             </div>
           </SheetContent>
         </DialogPrimitive.Root>
@@ -191,7 +154,11 @@ export function AppShell() {
               <Button variant="ghost" size="icon" asChild>
                 <Link to="/notifications" aria-label={`Notifications${unread ? `, ${unread} unread` : ''}`} className="relative">
                   <Bell />
-                  {unread > 0 && <span className="absolute right-1.5 top-1.5 size-2 rounded-full bg-accent ring-2 ring-card" aria-hidden="true" />}
+                  {unread > 0 && (
+                    <span className="tabular absolute -right-0.5 -top-0.5 min-w-4 rounded-full bg-accent px-1 text-center text-[10px] font-semibold leading-4 text-accent-foreground ring-2 ring-card" aria-hidden="true">
+                      {unread > 99 ? '99+' : unread}
+                    </span>
+                  )}
                 </Link>
               </Button>
 
@@ -270,7 +237,9 @@ export function AppShell() {
           </header>
           <main id="main" className="min-h-0 flex-1 overflow-y-auto">
             <div className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-6 lg:px-8">
-              <Outlet />
+              <ErrorBoundary resetKey={location.pathname}>
+                <Outlet />
+              </ErrorBoundary>
             </div>
           </main>
         </div>

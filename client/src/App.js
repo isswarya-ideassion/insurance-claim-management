@@ -4,6 +4,7 @@ import { AppRoutes } from '@/routes/AppRoutes.js'
 import { Toaster } from '@/components/ui/sonner.js'
 import { TooltipProvider } from '@/components/ui/misc.js'
 import { configurationProblem } from '@/constants/config.js'
+import { ErrorBoundary } from '@/components/common/ErrorBoundary.js'
 
 function ConfigurationError({ message }) {
   return (
@@ -24,7 +25,9 @@ export default function App() {
     <BrowserRouter>
       <TooltipProvider>
         <AuthProvider>
-          <AppRoutes />
+          <ErrorBoundary className="m-6">
+            <AppRoutes />
+          </ErrorBoundary>
           <Toaster />
         </AuthProvider>
       </TooltipProvider>

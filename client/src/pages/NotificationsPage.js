@@ -22,14 +22,22 @@ const EMAIL_LABEL = {
 
 export default function NotificationsPage() {
   const { params, setParams } = useListParams({ pageSize: 20 })
-  const query = useApiQuery(() => notificationsService.list(params), [params.page, params.pageSize, params.unread])
+  const query = useApiQuery(
+    () =>
+      notificationsService.list(params).then((result) => {
+        // Guard the render: a malformed response becomes an error state with retry, not a crash.
+        if (!Array.isArray(result?.data)) throw new Error('Notifications could not be loaded: the server returned an unexpected response.')
+        return result
+      }),
+    [params.page, params.pageSize, params.unread],
+  )
   const action = useAction()
   const changed = () => window.dispatchEvent(new Event(NOTIFICATIONS_CHANGED))
 
   async function markRead(n) {
     if (n.is_read) return
     await notificationsService.markRead(n.id).catch(() => {})
-    query.setData((rows) => rows.map((r) => (r.id === n.id ? { ...r, is_read: true } : r)))
+    query.setData((rows) => (rows || []).map((r) => (r.id === n.id ? { ...r, is_read: true } : r)))
     changed()
   }
 
@@ -61,7 +69,7 @@ export default function NotificationsPage() {
         }
       />
       <div className="rounded-xl border bg-card shadow-sm">
-        <QueryState query={query} skeleton={<TableSkeleton rows={6} cols={2} />} empty={<div className="p-4"><EmptyState icon={Bell} title="You're all caught up" description="New notifications will appear here." /></div>}>
+        <QueryState query={query} skeleton={<TableSkeleton rows={6} cols={2} />} empty={<div className="p-4"><EmptyState icon={Bell} title={params.unread === 'true' ? 'No unread notifications' : 'No notifications yet.'} description={params.unread === 'true' ? "You're all caught up." : 'Updates about your claims and tasks will appear here.'} /></div>}>
           {(rows, meta) => (
             <>
               <ul className="divide-y">
@@ -70,8 +78,8 @@ export default function NotificationsPage() {
                     <span className={cn('mt-1.5 size-2 shrink-0 rounded-full', n.is_read ? 'bg-transparent' : 'bg-accent')} aria-label={n.is_read ? undefined : 'Unread'} />
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <p className="font-medium">{n.title}</p>
-                        <Badge tone="neutral">{humanize(n.type)}</Badge>
+                        <p className="font-medium">{n.title || 'Notification'}</p>
+                        {n.type && <Badge tone="neutral">{humanize(n.type)}</Badge>}
                       </div>
                       <p className="mt-0.5 text-sm text-muted-foreground">{n.message}</p>
                       <div className="mt-1.5 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">

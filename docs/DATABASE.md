@@ -9,6 +9,7 @@ Migrations live in `supabase/migrations/` and run in order:
 | `20261019000003_workflow_transitions.sql` | **Generated** from `shared/workflow.js` (`npm run db:transitions-sql`) |
 | `20261019000004_row_level_security.sql` | Helper functions, privileges, RLS policies |
 | `20261019000005_storage.sql` | Private `claim-documents` bucket |
+| `20261020000006_customer_records_automation.sql` | `CUSTOMER_RECORDS_ADMIN` role and its read policies, `ai_runs`, `claim_reminders` |
 
 `supabase/seed.sql` inserts reference roles only. It never creates authentication identities or profiles.
 
@@ -32,7 +33,7 @@ information_requests 1─* documents
 
 | Table | Purpose | Notable constraints |
 |---|---|---|
-| `roles` | The nine role codes | `code` unique |
+| `roles` | The ten role codes | `code` unique |
 | `profiles` | One row per auth user (created by trigger on `auth.users`) | PK references `auth.users`; unique lower(email) |
 | `user_roles` | Role grants; `approval_limit` for `CLAIMS_MANAGER` | unique (user, role) |
 | `policies` | Insurance contracts (reference data) | unique policy number; `effective_to > effective_from`; positive sum insured |
@@ -53,6 +54,8 @@ information_requests 1─* documents
 | `notifications` | In-app notifications and email delivery status | email status CHECK (`SENT` only from a real provider) |
 | `audit_logs` | Append-only change log with actor, roles, request id, before/after diff | **immutable** |
 | `claim_status_transitions` | Permitted transitions (generated) used by the trigger | PK (from, to) |
+| `ai_runs` | One row per AI call (document extraction or claim summary), successful or failed: provider, model, duration, token counts, validated result, review status | result columns **immutable** (trigger); no deletes; applied/discarded runs cannot be reviewed again; failed runs need an `error_code` |
+| `claim_reminders` | Deadline reminders (internal, sent automatically) and customer reminders (drafts) with full history | `dedupe_key` unique (one reminder per claim, type, deadline and recipient); one open draft per claim; **customer reminders cannot be `APPROVED` without `decided_by`/`decided_at`**; internal reminders are always `SENT` |
 
 ## Database-enforced business rules
 
@@ -63,6 +66,7 @@ These hold even if the API were bypassed:
 - **Payments** — `payments_enforce_rules` requires an approved settlement with a matching amount, allows only `PENDING→PROCESSING|CANCELLED`, `PROCESSING→PAID|FAILED`, `FAILED→PENDING|CANCELLED`, `PAID→RECONCILED`, and blocks `PROCESSING` under a compliance hold.
 - **Immutability** — audit logs, approvals and status history cannot be updated or deleted; completed payment attempts cannot be modified.
 - **Claim numbers** — `next_claim_number()` returns `HPC-<year>-<sequence>` from `claim_number_seq`.
+- **Automation** — AI results cannot be altered after they are recorded, and no customer communication can be marked as sent without a recorded human approver.
 
 Trigger errors use a `CODE: message` format that the API maps to `409` responses with the same code.
 
@@ -73,6 +77,8 @@ Development provisioning sets `app.seed_mode = 'on'` for its own transaction so 
 RLS is enabled on every table. The Express API connects with a privileged database role and enforces authorization in its service layer; RLS is the boundary for any access using a user JWT (supabase-js / PostgREST with the anon key).
 
 Helper functions (`security definer`, fixed `search_path`): `has_role`, `has_any_role`, `is_staff`, `can_access_claim(claim_id)` (mirrors the API's claim scope), `can_staff_access_claim`.
+
+`CUSTOMER_RECORDS_ADMIN` is deliberately **not** part of `can_access_claim()`: its own policies grant read access to policies, submitted claims and customer documents only, so it gets no notes, tasks, financial, compliance, payment or audit data and no workflow actions. `DATA_ADMIN` still has no claim access.
 
 | Table(s) | Who can read | Who can write directly |
 |---|---|---|
@@ -89,6 +95,9 @@ Helper functions (`security definer`, fixed `search_path`): `has_role`, `has_any
 | payments / attempts | payment ops, managers, compliance (payments), auditors | nobody |
 | notifications | recipient | recipient (`is_read`, `read_at` only) |
 | audit logs | auditors, compliance, managers, data admins | nobody |
+| policies, submitted claims, customer documents (not internal evidence) | additionally `CUSTOMER_RECORDS_ADMIN` | nobody |
+| `ai_runs` | claims operations, managers, auditors within claim scope | nobody |
+| `claim_reminders` | the internal recipient; claims operations, managers, auditors within claim scope | nobody |
 
 `anon` has no table privileges. Storage has no client policies on `claim-documents`, so only the service role (the API) can read or write objects.
 

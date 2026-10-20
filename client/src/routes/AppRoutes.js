@@ -38,6 +38,9 @@ const ReconciliationPage = page(() => import('@/pages/payments/ReconciliationPag
 const ReportsPage = page(() => import('@/pages/reports/ReportsPage.js'))
 const UsersPage = page(() => import('@/pages/admin/UsersPage.js'))
 const AuditLogPage = page(() => import('@/pages/admin/AuditLogPage.js'))
+const CustomerRecordsPage = page(() => import('@/pages/customer-records/CustomerRecordsPage.js'))
+const CustomerRecordDetailPage = page(() => import('@/pages/customer-records/CustomerRecordDetailPage.js'))
+const RemindersPage = page(() => import('@/pages/automation/RemindersPage.js'))
 const NotificationsPage = page(() => import('@/pages/NotificationsPage.js'))
 const ProfilePage = page(() => import('@/pages/ProfilePage.js'))
 const UnauthorizedPage = page(() => import('@/pages/UnauthorizedPage.js'))
@@ -89,6 +92,9 @@ export function AppRoutes() {
           <Route path="reports" element={guard(RR.reports, <ReportsPage />)} />
           <Route path="audit" element={guard(RR.audit, <AuditLogPage />)} />
           <Route path="admin/users" element={guard(RR.admin, <UsersPage />)} />
+          <Route path="customer-records" element={guard(RR.customerRecords, <CustomerRecordsPage />)} />
+          <Route path="customer-records/:id" element={guard(RR.customerRecords, <CustomerRecordDetailPage />)} />
+          <Route path="automation/reminders" element={guard(RR.automation, <RemindersPage />)} />
           <Route path="notifications" element={<NotificationsPage />} />
           <Route path="profile" element={<ProfilePage />} />
         </Route>

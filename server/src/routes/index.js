@@ -17,6 +17,8 @@ import { notificationsRoutes } from '../modules/notifications/notifications.rout
 import { reportsRoutes } from '../modules/reports/reports.routes.js'
 import { auditRoutes } from '../modules/audit/audit.routes.js'
 import { adminRoutes } from '../modules/admin/admin.routes.js'
+import { customersRoutes } from '../modules/customers/customers.routes.js'
+import { automationRoutes } from '../modules/automation/automation.routes.js'
 
 export function createApiRouter(config) {
   const router = Router()
@@ -27,6 +29,7 @@ export function createApiRouter(config) {
       mode: config.DATA_MODE,
       mockMode: config.isMock,
       simulatedPayments: true,
+      aiConfigured: config.AI_PROVIDER !== 'none',
       time: new Date().toISOString(),
     }),
   )
@@ -57,6 +60,8 @@ export function createApiRouter(config) {
   router.use(reportsRoutes())
   router.use(auditRoutes())
   router.use(adminRoutes())
+  router.use(customersRoutes())
+  router.use(automationRoutes())
 
   return router
 }

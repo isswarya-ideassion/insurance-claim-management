@@ -30,6 +30,18 @@ const schema = z.object({
   PAYMENT_ADAPTER: z.enum(['simulated']).default('simulated'),
   OVERDUE_SWEEP_MINUTES: z.coerce.number().min(0).default(15),
   AUTH_RATE_LIMIT: z.coerce.number().int().positive().optional(),
+
+  // AI automation. "none" disables AI features; the API then returns setup
+  // instructions instead of results. Credentials stay server-side.
+  AI_PROVIDER: z.enum(['none', 'anthropic']).default('none'),
+  ANTHROPIC_API_KEY: z.string().optional(),
+  AI_MODEL: z.string().trim().min(1).default('claude-opus-5-5'),
+  AI_TIMEOUT_MS: z.coerce.number().int().min(5_000).max(600_000).default(90_000),
+  AI_MAX_RETRIES: z.coerce.number().int().min(0).max(5).default(2),
+
+  // Rule-based reminders and record retention.
+  REMINDER_LEAD_HOURS: z.coerce.number().min(1).max(24 * 14).default(24),
+  CUSTOMER_RECORD_RETENTION_YEARS: z.coerce.number().int().min(1).max(100).default(7),
 })
 
 const PLACEHOLDER = /your-|change-me|placeholder/i
@@ -57,6 +69,10 @@ export function loadConfig(overrides = {}) {
           'The server never falls back to mock mode automatically.',
       )
     }
+  }
+
+  if (env.AI_PROVIDER === 'anthropic' && env.ANTHROPIC_API_KEY && PLACEHOLDER.test(env.ANTHROPIC_API_KEY)) {
+    throw new Error('AI_PROVIDER=anthropic but ANTHROPIC_API_KEY still holds a placeholder value. Set a real key or use AI_PROVIDER=none.')
   }
 
   const dataDir = path.resolve(serverRoot, env.MOCK_DATA_DIR)

@@ -34,7 +34,7 @@ What mock mode does:
 
 Safeguards: the server refuses `DATA_MODE=mock` with `NODE_ENV=production`; the UI shows a permanent **MOCK MODE** banner; if the web app and API run in different modes, a red banner appears and sign-in is disabled; a failed Supabase login never falls back to mock authentication.
 
-On first start the API seeds fictional demo data (13 users, 7 policies, 19 claims across every workflow stage, documents, tasks, assessments, reserves, approvals, compliance reviews, payments and notifications). Reset by deleting `server/.data/`, or run with `MOCK_DB_PERSISTENCE=memory`.
+On first start the API seeds fictional demo data (14 users, 7 policies, 19 claims across every workflow stage, documents, tasks, assessments, reserves, approvals, compliance reviews, payments and notifications). Reset by deleting `server/.data/`, or run with `MOCK_DB_PERSISTENCE=memory`.
 
 ### Demo accounts (mock mode)
 
@@ -54,6 +54,7 @@ Password for every account: `HarborDemo!2026` (configurable with `MOCK_DEMO_PASS
 | Compliance Officer | `compliance.carlos@demo.harborpoint.test` | |
 | Data Administrator | `admin.dana@demo.harborpoint.test` | |
 | Auditor | `auditor.ade@demo.harborpoint.test` | Read-only |
+| Customer Records Admin | `records.rosa@demo.harborpoint.test` | All customer records, read-only + CSV export |
 
 ## 3. Supabase mode
 
@@ -113,6 +114,12 @@ cp client/.env.example client/.env
 | `AUTH_RATE_LIMIT` | Optional login/registration attempts per IP per 15 minutes |
 | `MOCK_*` | Mock-mode settings (ignored in Supabase mode) |
 | `DEV_SEED_PASSWORD` | Password for accounts created by `npm run provision:dev` |
+| `AI_PROVIDER` | `none` (default — AI features show setup instructions) or `anthropic` |
+| `ANTHROPIC_API_KEY` | **Server only.** Needed when `AI_PROVIDER=anthropic` |
+| `AI_MODEL` | Default `claude-opus-5-5` |
+| `AI_TIMEOUT_MS` / `AI_MAX_RETRIES` | Per-request timeout (default 90000) and retries for transient errors (default 2) |
+| `REMINDER_LEAD_HOURS` | Claims due within this window get an "approaching deadline" reminder (default 24) |
+| `CUSTOMER_RECORD_RETENTION_YEARS` | Retention period shown on customer records (default 7) |
 
 `client/.env`
 
@@ -197,7 +204,14 @@ Use mock mode (fresh data: delete `server/.data/`). Each step lists the expected
 20. As `auditor.ade` browse claims, decisions, payments and the audit log; no action buttons are offered and the API rejects writes.
 21. As `admin.dana` grant `AUDITOR` to a customer; attempt to change your own roles → refused. Run the overdue sweep → overdue-task notifications created.
 22. *Reports* (operations/manager): change the date range and grouping; every chart offers a table view.
-23. Check the mobile layout at ~390 px width: the sidebar collapses into a drawer.
+23. Check the mobile layout at ~390 px width: the sidebar is replaced by a menu button that opens the navigation drawer; the notification bell stays in the top-right header.
+
+**Customer records and automation**
+24. As `records.rosa` → *Customer Records*: search `HP-MOT-100231` (Alice), a phone fragment such as `0102` (Ben) or part of a customer ID; filter by policy type; sort by claims; export CSV; open a customer to see policies, claim history, documents and the retention date. `/claims` is refused.
+25. As `admin.dana` or `auditor.ade`, open `/customer-records` → *Access restricted*.
+26. As `ops.olivia` open `HPC-2026-000101` → *Automation*: Medical report and invoice show *Not received*; *Prepare reminder draft* → review (optionally edit) → *Approve and send*. Alice receives one notification and two document requests; the history shows who approved it.
+27. *Reminders* → *Check deadlines now*: owners of claims due within 24 hours (or overdue) are notified once; running it again sends nothing new.
+28. With `AI_PROVIDER=none` the Automation tab shows setup instructions and AI buttons are disabled. With a real key: *Extract fields* on a document → review values, pages and quotes → select fields → confirm → the claim updates and the audit log records `CLAIM_UPDATED_FROM_EXTRACTION`. *Generate summary* shows AI suggestions separately from the recorded facts.
 
 ## 6. Production notes
 

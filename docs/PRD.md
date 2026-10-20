@@ -28,6 +28,7 @@ Non-goals for the MVP: real bank payments, real email delivery, policy administr
 | Compliance Officer | Compliance reviews, risk flags, holds, clearances, exceptions | Compliance-stage claims and claims they reviewed |
 | Data Administrator | Manage users and role grants; view reports and audit | No claim content |
 | Auditor | Read-only access to claims, decisions, payments, reports and audit log | All submitted claims (read-only) |
+| Customer Records Admin | Centralized, read-only view of every customer record (profile, policies, claim history, documents), CSV export | All customers; no claim workflow, notes, tasks, financial, compliance or audit data |
 
 Users can hold several roles and switch workspace from the header; only roles granted by an administrator are available.
 
@@ -117,10 +118,34 @@ In-app notifications for submission, assignment, missing documents, document acc
 
 Claims by status, type and date; average and median processing time; overdue tasks by assignee; outstanding document requests; adjuster workload; approval turnaround; payment success/failure; claim aging; team productivity. All figures come from SQL over the viewer's authorized claim scope; team-level reports are limited to operations, managers, administrators and auditors. Each chart has a table view.
 
-## 14. Non-functional requirements
+## 14. Centralized customer records
+
+One designated role, **Customer Records Admin**, can see every customer record for record keeping and future reference. The Data Administrator role was not reused because it is deliberately kept away from claim content.
+
+- One searchable table: name, email, customer ID, phone (digits) and policy number; filters for policy type, policy status, open claims, account status and possible duplicates; sorting and pagination.
+- Detail: profile, policies (payout accounts masked), submitted claim history, customer documents (preview/download through the API), possible duplicates and the retention date.
+- Retention: records are kept `CUSTOMER_RECORD_RETENTION_YEARS` (default 7) after the last activity and cannot be deleted through the application. Customer creation, editing and deletion are not offered by this module.
+- Duplicates: email is unique in the database (the reliable identifier). Shared phone numbers or identical names are flagged for review, not blocked or merged.
+- Export (CSV) needs `customers.export`. Every view, export and download is audited.
+- Enforced by API permissions (`customers.*`) and dedicated RLS policies; other roles, including data administrators and auditors, are refused.
+
+## 15. Automation for claims officers
+
+Automation removes repetitive administration from the Claims Operations ("claims officer") workflow; managers have the same tools and auditors can view them. It is not a chatbot, and it never approves, rejects or settles a claim or makes a fraud determination.
+
+| Automation | How it works | Human control |
+|---|---|---|
+| A. Document extraction | AI (configurable provider, default Claude) reads a PDF or image and returns incident date, location, description, loss amount, affected asset, plus policy number and insured name for cross-checking. Output is validated against the claim model (real dates, not in the future, positive amounts, minimum lengths) and compared with the claim and policy | Values are shown with page and quote; an authorized user selects and confirms which to save. Only then is the claim updated (audited) |
+| B. Missing documents | Rule-based comparison of received documents and open requests with the required checklist for the claim type | Suggested next action; a reminder draft is prepared but never sent automatically |
+| C. Claim summary | Recorded facts (incident, timeline, documents, missing information, pending actions) are assembled from the database. AI adds a short summary, next steps and points to verify | AI output is labeled, stored separately, flagged when stale, and suggestions that read as a final decision are withheld |
+| D. Reminders | A scheduled sweep finds claims within `REMINDER_LEAD_HOURS` of, or past, their stage deadline and notifies the assigned owner (or the claims managers if unassigned). A dedupe key makes each reminder unique per claim, deadline and recipient | Internal reminders are automatic. Customer reminders are drafts until approved (the database refuses a sent customer reminder without an approver) |
+
+AI safeguards: credentials only in server environment variables; permission and claim-scope checks before any data is read; only the document (extraction) or minimized facts without names, contact details, claim or policy numbers (summary) are sent; documents are treated as untrusted input; structured JSON output validated with Zod; timeouts and retries; every call logged in `ai_runs` with metadata only in application logs. With `AI_PROVIDER=none`, the UI and API show setup instructions instead of results.
+
+## 16. Non-functional requirements
 
 - Accessibility: labelled controls, keyboard-operable tables, dialogs and menus, visible focus, reduced-motion support, charts with table alternatives.
-- Responsive layout with a collapsible sidebar and a mobile navigation drawer.
+- Responsive layout with a static, fixed-width sidebar (role navigation, no collapse) on desktop, a navigation drawer on smaller screens, and a single notification bell with unread count in the top-right header.
 - Consistent API envelope `{ data, meta }` / `{ error: { code, message, details, requestId } }`.
 - All timestamps stored in UTC; money stored as `numeric(14,2)`.
 - No secrets in the frontend; placeholders only in `.env.example` files.

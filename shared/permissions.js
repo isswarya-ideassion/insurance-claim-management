@@ -8,6 +8,7 @@ const PAY = R.PAYMENT_OPERATIONS
 const CO = R.COMPLIANCE_OFFICER
 const ADMIN = R.DATA_ADMIN
 const AUD = R.AUDITOR
+const CRA = R.CUSTOMER_RECORDS_ADMIN
 const CUST = R.CUSTOMER
 
 /**
@@ -55,6 +56,21 @@ export const PERMISSIONS = {
   'audit.view': [AUD, CO, MGR, ADMIN],
   'admin.users': [ADMIN],
   'admin.jobs': [ADMIN, MGR],
+
+  // Centralized customer records: one designated read-only role. Creating,
+  // editing and deleting customers is not offered through this module.
+  'customers.view': [CRA],
+  'customers.viewDocuments': [CRA],
+  'customers.export': [CRA],
+
+  // Automation for claims officers (Claims Operations) and managers. AI output
+  // is advisory: applying extracted values needs a separate, explicit permission.
+  'automation.view': [OPS, MGR, AUD],
+  'automation.documentChecklist': [OPS, MGR],
+  'automation.extract': [OPS, MGR],
+  'automation.applyExtraction': [OPS, MGR],
+  'automation.summarize': [OPS, MGR],
+  'automation.reminders': [OPS, MGR],
 }
 
 /** Tabs of the unified Claim Details workspace and the roles that may see them. */
@@ -68,6 +84,7 @@ export const CLAIM_TABS = [
   { key: 'approvals', label: 'Approvals', roles: [MGR, ADJ, CO, PAY, AUD] },
   { key: 'compliance', label: 'Compliance', roles: [CO, MGR, AUD] },
   { key: 'payments', label: 'Payments', roles: [PAY, MGR, CO, AUD] },
+  { key: 'automation', label: 'Automation', roles: [OPS, MGR, AUD] },
   { key: 'activity', label: 'Activity', roles: [OPS, MGR, DR, ADJ, CO, PAY, AUD] },
 ]
 

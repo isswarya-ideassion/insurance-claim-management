@@ -13,6 +13,7 @@ insert into public.roles (code, name, description, is_staff) values
   ('PAYMENT_OPERATIONS', 'Payment Operations', 'Processes approved settlement payments and reconciliation', true),
   ('COMPLIANCE_OFFICER', 'Compliance Officer', 'Performs compliance reviews, holds and clearances', true),
   ('DATA_ADMIN', 'Data Administrator', 'Manages users, role grants and reference data', true),
-  ('AUDITOR', 'Auditor', 'Read-only access to claims, decisions and audit history', true)
+  ('AUDITOR', 'Auditor', 'Read-only access to claims, decisions and audit history', true),
+  ('CUSTOMER_RECORDS_ADMIN', 'Customer Records Admin', 'Read-only access to every customer record (profile, policies, claim history, documents) for centralized management', true)
 on conflict (code) do update
   set name = excluded.name, description = excluded.description, is_staff = excluded.is_staff;

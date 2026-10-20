@@ -3,6 +3,7 @@ import { logger } from './config/logger.js'
 import { createDependencies } from './services/container.js'
 import { createApp } from './app.js'
 import { runOverdueSweep } from './modules/tasks/tasks.service.js'
+import { runDeadlineReminderSweep } from './modules/automation/reminders.service.js'
 import { DEMO_DOMAIN } from './seed/demoData.js'
 
 async function main() {
@@ -34,6 +35,7 @@ async function main() {
   if (config.OVERDUE_SWEEP_MINUTES > 0) {
     timer = setInterval(() => {
       runOverdueSweep(deps).catch((err) => logger.error('overdue sweep failed', { error: err.message }))
+      runDeadlineReminderSweep(deps).catch((err) => logger.error('reminder sweep failed', { error: err.message }))
     }, config.OVERDUE_SWEEP_MINUTES * 60_000)
     timer.unref()
   }

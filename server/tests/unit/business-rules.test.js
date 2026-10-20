@@ -10,7 +10,7 @@ import { maskAccount, sanitizeFileName } from '../../src/utils/format.js'
 
 describe('permissions', () => {
   it('keeps the auditor read-only', () => {
-    const readOnly = ['claims.viewQueue', 'compliance.view', 'payments.view', 'reports.view', 'reports.teamMetrics', 'audit.view']
+    const readOnly = ['claims.viewQueue', 'compliance.view', 'payments.view', 'reports.view', 'reports.teamMetrics', 'audit.view', 'automation.view']
     for (const [perm, roles] of Object.entries(PERMISSIONS)) {
       if (!readOnly.includes(perm)) expect(roles, perm).not.toContain(ROLES.AUDITOR)
     }

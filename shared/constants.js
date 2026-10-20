@@ -8,6 +8,7 @@ export const ROLES = Object.freeze({
   COMPLIANCE_OFFICER: 'COMPLIANCE_OFFICER',
   DATA_ADMIN: 'DATA_ADMIN',
   AUDITOR: 'AUDITOR',
+  CUSTOMER_RECORDS_ADMIN: 'CUSTOMER_RECORDS_ADMIN',
 })
 
 export const ALL_ROLES = Object.values(ROLES)
@@ -23,6 +24,7 @@ export const ROLE_LABELS = {
   COMPLIANCE_OFFICER: 'Compliance Officer',
   DATA_ADMIN: 'Data Administrator',
   AUDITOR: 'Auditor',
+  CUSTOMER_RECORDS_ADMIN: 'Customer Records Admin',
 }
 
 // Order used to choose a default workspace for users holding several roles.
@@ -34,6 +36,7 @@ export const ROLE_PRIORITY = [
   ROLES.DOCUMENT_REVIEWER,
   ROLES.PAYMENT_OPERATIONS,
   ROLES.DATA_ADMIN,
+  ROLES.CUSTOMER_RECORDS_ADMIN,
   ROLES.AUDITOR,
   ROLES.CUSTOMER,
 ]
@@ -277,4 +280,43 @@ export function humanize(value) {
     .split('_')
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(' ')
+}
+
+// ---------------------------------------------------------------------------
+// Automation (AI-assisted extraction and summaries, rule-based reminders)
+// ---------------------------------------------------------------------------
+
+/** Claim fields an extraction may propose; every value needs human confirmation before it is saved. */
+export const EXTRACTABLE_CLAIM_FIELDS = [
+  { key: 'incident_date', label: 'Incident date', claimField: 'incident_at' },
+  { key: 'incident_location', label: 'Incident location', claimField: 'incident_location' },
+  { key: 'incident_description', label: 'Incident description', claimField: 'incident_description' },
+  { key: 'estimated_loss', label: 'Loss amount', claimField: 'estimated_loss' },
+  { key: 'affected_asset', label: 'Affected property or asset', claimField: 'affected_asset' },
+  // Reference-only fields: compared with the policy for consistency, never written to the claim.
+  { key: 'policy_number', label: 'Policy number', claimField: null },
+  { key: 'insured_name', label: 'Insured name', claimField: null },
+]
+
+/** Claim statuses in which confirmed extraction values may still update the official claim record. */
+export const EXTRACTION_EDITABLE_STATUSES = [
+  'SUBMITTED',
+  'POLICY_VERIFICATION',
+  'DOCUMENTS_REQUIRED',
+  'DOCUMENT_REVIEW',
+  'ADJUSTER_ASSIGNMENT',
+  'INVESTIGATION',
+]
+
+export const REMINDER_TYPE_LABELS = {
+  DEADLINE_APPROACHING: 'Deadline approaching',
+  DEADLINE_OVERDUE: 'Deadline passed',
+  MISSING_DOCUMENTS: 'Missing documents',
+}
+
+export const REMINDER_STATUS_LABELS = {
+  SENT: 'Sent',
+  DRAFT: 'Awaiting approval',
+  APPROVED: 'Approved and sent',
+  DISCARDED: 'Discarded',
 }

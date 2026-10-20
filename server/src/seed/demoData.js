@@ -25,6 +25,7 @@ export const DEMO_USERS = [
   { key: 'carlos', email: `compliance.carlos@${DEMO_DOMAIN}`, fullName: 'Carlos Mendes', roles: ['COMPLIANCE_OFFICER'] },
   { key: 'dana', email: `admin.dana@${DEMO_DOMAIN}`, fullName: 'Dana Kowalski', roles: ['DATA_ADMIN'] },
   { key: 'ade', email: `auditor.ade@${DEMO_DOMAIN}`, fullName: 'Adebayo Lawal', roles: ['AUDITOR'] },
+  { key: 'rosa', email: `records.rosa@${DEMO_DOMAIN}`, fullName: 'Rosa Lindqvist', roles: ['CUSTOMER_RECORDS_ADMIN'] },
 ]
 
 const HOUR = 3600_000
@@ -80,6 +81,21 @@ export async function demoDataExists(db) {
  * @param {Function} opts.createUser  ({ email, password, fullName, phone, staff }) => { id }
  * @param {string}   opts.password    password for every demo account
  */
+/** Creates any demo accounts missing from an existing demo database and grants their roles. */
+export async function ensureDemoUsers({ db, createUser, password, log = () => {} }) {
+  for (const u of DEMO_USERS) {
+    if (await db.findOne('profiles', { email: u.email })) continue
+    const created = await createUser({ email: u.email, password, fullName: u.fullName, phone: u.phone, staff: !u.roles.includes('CUSTOMER') })
+    for (const role of u.roles) {
+      await db.query(
+        `insert into public.user_roles (user_id, role_code, approval_limit) values ($1, $2, $3) on conflict (user_id, role_code) do nothing`,
+        [created.id, role, role === 'CLAIMS_MANAGER' ? u.approvalLimit : null],
+      )
+    }
+    log(`added demo user ${u.email}`)
+  }
+}
+
 export async function seedDemoData({ db, storage, createUser, password, log = () => {} }) {
   const users = {}
   for (const u of DEMO_USERS) {

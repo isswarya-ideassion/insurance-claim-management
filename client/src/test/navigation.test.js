@@ -4,7 +4,7 @@ import { NAVIGATION, ROLE_HOME, ROUTE_ROLES } from '@/constants/navigation.js'
 
 // Maps each navigable path to the ROUTE_ROLES entry guarding it in AppRoutes.
 const PATH_GUARD = [
-  [/^\/customer/, 'customer'],
+  [/^\/customer(\/|$)/, 'customer'],
   [/^\/operations$/, 'operations'],
   [/^\/claims/, 'claims'],
   [/^\/tasks$/, 'tasks'],
@@ -17,6 +17,8 @@ const PATH_GUARD = [
   [/^\/reports$/, 'reports'],
   [/^\/audit$/, 'audit'],
   [/^\/admin/, 'admin'],
+  [/^\/customer-records/, 'customerRecords'],
+  [/^\/automation/, 'automation'],
   [/^\/notifications$/, null],
 ]
 
@@ -41,11 +43,22 @@ describe('role-based navigation', () => {
     }
   })
 
+  it('keeps notifications out of the sidebar (the header bell is the only entry point)', () => {
+    for (const role of ALL_ROLES) {
+      expect(NAVIGATION[role].some((i) => i.to === '/notifications'), role).toBe(false)
+    }
+  })
+
   it('sends each role home to a route it may open', () => {
     for (const role of ALL_ROLES) {
       const [, key] = guardFor(ROLE_HOME[role])
       expect(ROUTE_ROLES[key]).toContain(role)
     }
+  })
+
+  it('limits customer records to the designated role', () => {
+    expect(ROUTE_ROLES.customerRecords).toEqual(['CUSTOMER_RECORDS_ADMIN'])
+    expect(NAVIGATION.CUSTOMER_RECORDS_ADMIN.map((i) => i.to)).toEqual(['/customer-records'])
   })
 
   it('keeps customers out of staff areas and staff out of the customer portal', () => {

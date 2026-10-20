@@ -214,3 +214,51 @@ Repeating the same key returns the same result with `replayed: true`. A differen
 | DELETE | `/admin/users/:id/roles/:roleCode` | |
 | GET | `/admin/roles` · `/admin/system` | |
 | POST | `/admin/jobs/overdue-sweep` | Admins and managers |
+
+## Customer records (`CUSTOMER_RECORDS_ADMIN` only)
+
+Every other role, including data administrators and auditors, receives `403`. All views, exports and downloads are written to the audit log.
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/customers?search&policyType&policyStatus&hasOpenClaims&status&possibleDuplicate&sort&direction&page&pageSize` | `search` matches name, email, customer ID, phone digits and policy numbers. `sort`: `name`, `created_at`, `last_claim_at`, `claim_count`, `last_activity_at`. `meta.retentionYears` |
+| GET | `/customers/export?…same filters` | CSV (max 5,000 rows; `X-Export-Truncated` header). Cells starting with `= + - @` are prefixed to prevent spreadsheet formula injection |
+| GET | `/customers/:id` | `{ customer, policies, claims, documents, possibleDuplicates, retention }`. Payout accounts are masked; drafts and internal evidence are excluded |
+| GET | `/customers/:id/documents/:documentId/download?disposition` | Streams a customer document after checking it belongs to that customer |
+
+```json
+{ "data": [{ "id": "6246b58b-…", "full_name": "Alice Thornton", "email": "customer.alice@demo.harborpoint.test",
+             "phone": "+1 555 0101", "policy_numbers": "HP-MOT-100231, HP-PRP-200001", "policy_count": 3,
+             "claim_count": 6, "open_claim_count": 4, "last_claim_at": "2026-10-14T…",
+             "last_activity_at": "2026-10-20T…", "retain_until": "2033-10-20T…", "possible_duplicate": false }],
+  "meta": { "page": 1, "pageSize": 25, "total": 3, "totalPages": 1, "retentionYears": 7 } }
+```
+
+## Automation (claims officers and managers; auditors read-only)
+
+AI endpoints return `503 AI_NOT_CONFIGURED` with `details.setup` (instructions) when `AI_PROVIDER=none`. They never return placeholder results. AI errors use `AI_TIMEOUT` (504), `AI_UNAVAILABLE` / `AI_RATE_LIMITED` (503), `AI_INVALID_OUTPUT` / `AI_PROVIDER_ERROR` / `AI_POLICY_VIOLATION` (502) and `AI_REFUSED` (422); `details.retryable` says whether trying again can help, and `details.runId` points at the logged failed run.
+
+| Method | Path | Permission | Notes |
+|---|---|---|---|
+| GET | `/automation/status` | `automation.view` | `{ configured, provider, model, setup[] }` |
+| GET | `/claims/:id/automation/document-checklist` | `automation.documentChecklist` | Rule-based: `required[]` (state `ACCEPTED`, `PENDING_REVIEW`, `REJECTED`, `MISSING`, open request), `requestable[]`, `suggestedActions[]`, `openDraft` |
+| POST | `/claims/:id/automation/reminder-drafts` | `automation.reminders` | `{ categories? }` → customer draft (status `DRAFT`). Nothing is sent. `409 DRAFT_EXISTS`, `409 NOTHING_TO_REQUEST` |
+| POST | `/automation/reminders/:id/approve` | `automation.reminders` | `{ message? }` (edited text). Creates one document request per category and one notification to the claimant |
+| POST | `/automation/reminders/:id/discard` | `automation.reminders` | |
+| GET | `/claims/:id/automation/reminders` | `automation.view` | Reminder history for a claim |
+| GET | `/automation/reminders?status&audience&type` | `automation.view` | Within your claim scope |
+| POST | `/automation/reminders/sweep` | `automation.reminders` | Runs the deadline sweep now: `{ claimsChecked, remindersSent, draftsPrepared }` |
+| POST | `/documents/:id/extractions` | `automation.extract` | AI reads the document. Result is stored with `review_status: PENDING_REVIEW`; the claim is **not** changed |
+| GET | `/claims/:id/automation/extractions` | `automation.view` | |
+| POST | `/automation/extractions/:id/apply` | `automation.applyExtraction` | `{ fields: ["estimated_loss", …] }` — only fields marked `applicable`, only while the claim is between Submitted and Investigation. Audited as `CLAIM_UPDATED_FROM_EXTRACTION` |
+| POST | `/automation/extractions/:id/discard` | `automation.applyExtraction` | |
+| GET | `/claims/:id/automation/summary` | `automation.view` | `{ facts, ai, disclaimer, aiStatus }` — `facts` comes from the database; `ai` is the latest stored summary (with `stale`) or `null` |
+| POST | `/claims/:id/automation/summary` | `automation.summarize` | Generates a new AI summary |
+
+Extraction field (one per entry in `result.fields`):
+
+```json
+{ "key": "estimated_loss", "label": "Loss amount", "claimField": "estimated_loss",
+  "value": 13250, "confidence": "medium", "source": { "page": 2, "quote": "Total $13,250.00" },
+  "valid": true, "issue": null, "currentValue": "12800.00", "matchesCurrent": false, "applicable": true }
+```

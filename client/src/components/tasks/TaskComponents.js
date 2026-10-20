@@ -165,7 +165,7 @@ export function CreateTaskDialog({ open, onOpenChange, claimId, onCreated }) {
             <Select value={form.assigneeId} onValueChange={set('assigneeId')} allowClear placeholder="Unassigned" options={staff.map((s) => ({ value: s.id, label: s.full_name }))} />
           </FormField>
           <FormField label="Or team">
-            <Select value={form.assignedRole} onValueChange={set('assignedRole')} allowClear placeholder="No team" options={STAFF_ROLES.filter((r) => r !== 'AUDITOR' && r !== 'DATA_ADMIN').map((r) => ({ value: r, label: ROLE_LABELS[r] }))} />
+            <Select value={form.assignedRole} onValueChange={set('assignedRole')} allowClear placeholder="No team" options={STAFF_ROLES.filter((r) => !['AUDITOR', 'DATA_ADMIN', 'CUSTOMER_RECORDS_ADMIN'].includes(r)).map((r) => ({ value: r, label: ROLE_LABELS[r] }))} />
           </FormField>
           <FormField label="Due">
             <Input type="datetime-local" value={form.dueAt || ''} onChange={set('dueAt')} />
