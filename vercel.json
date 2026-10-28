@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "installCommand": "npm ci",
+  "installCommand": "npm ci --include=dev",
   "buildCommand": "VITE_MAX_UPLOAD_MB=4 npm run build -w client",
   "outputDirectory": "client/dist",
   "regions": ["sin1"],
