@@ -1,6 +1,13 @@
 node_modules/
 dist/
+coverage/
 .env
 .env.*
 !.env.example
 .DS_Store
+*.log
+
+# Local demo-mode data (embedded database + uploaded files)
+server/.data/
+supabase/.temp/
+supabase/.branches/
