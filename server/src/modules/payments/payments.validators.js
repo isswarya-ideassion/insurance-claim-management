@@ -20,7 +20,7 @@ export const idempotencyKeySchema = z
   .max(100)
   .regex(/^[A-Za-z0-9_-]+$/, 'Idempotency-Key may only contain letters, digits, - and _')
 
-export const retrySchema = z.object({ reason: z.string().trim().max(1000).optional().nullable() })
+export const resolveBlockSchema = z.object({ resolution: z.string().trim().min(5, 'Describe how the block was resolved').max(1000) })
 
 export const beneficiarySchema = z.object({
   beneficiaryName: z.string().trim().min(2).max(120),
@@ -28,6 +28,15 @@ export const beneficiarySchema = z.object({
   beneficiaryAccount: z.string().trim().regex(/^[0-9]{6,20}$/, 'Account number must be 6–20 digits'),
   reason: z.string().trim().min(5).max(1000),
 })
+
+export const claimPayeeSchema = z.object({
+  payeeName: z.string().trim().min(2).max(120),
+  bankName: z.string().trim().max(120).optional().nullable(),
+  accountNumber: z.string().trim().regex(/^[0-9]{6,20}$/, 'Account number must be 6–20 digits'),
+  reason: z.string().trim().min(5, 'Say where the details came from').max(1000),
+})
+
+export const verifyPayeeSchema = z.object({ notes: z.string().trim().max(1000).optional().nullable() })
 
 export const reconcileSchema = z.object({
   reconciliationReference: z.string().trim().min(3).max(100),

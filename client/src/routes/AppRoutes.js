@@ -24,6 +24,7 @@ const OperationsDashboard = page(() => import('@/pages/operations/OperationsDash
 const ClaimsQueuePage = page(() => import('@/pages/operations/ClaimsQueuePage.js'))
 const ClaimDetailPage = page(() => import('@/pages/operations/ClaimDetailPage.js'))
 const TasksPage = page(() => import('@/pages/operations/TasksPage.js'))
+const PolicyRenewalsPage = page(() => import('@/pages/operations/PolicyRenewalsPage.js'))
 const ReviewQueuePage = page(() => import('@/pages/document-review/ReviewQueuePage.js'))
 const AdjusterDashboard = page(() => import('@/pages/adjuster/AdjusterDashboard.js'))
 const ManagerDashboard = page(() => import('@/pages/manager/ManagerDashboard.js'))
@@ -41,6 +42,8 @@ const AuditLogPage = page(() => import('@/pages/admin/AuditLogPage.js'))
 const CustomerRecordsPage = page(() => import('@/pages/customer-records/CustomerRecordsPage.js'))
 const CustomerRecordDetailPage = page(() => import('@/pages/customer-records/CustomerRecordDetailPage.js'))
 const RemindersPage = page(() => import('@/pages/automation/RemindersPage.js'))
+const ConfigurationPage = page(() => import('@/pages/config/ConfigurationPage.js'))
+const IntegrationsPage = page(() => import('@/pages/integrations/IntegrationsPage.js'))
 const NotificationsPage = page(() => import('@/pages/NotificationsPage.js'))
 const ProfilePage = page(() => import('@/pages/ProfilePage.js'))
 const UnauthorizedPage = page(() => import('@/pages/UnauthorizedPage.js'))
@@ -74,15 +77,16 @@ export function AppRoutes() {
           <Route path="customer/payments" element={guard(RR.customer, <CustomerPaymentsPage />)} />
 
           <Route path="operations" element={guard(RR.operations, <OperationsDashboard />)} />
+          <Route path="policy-renewals" element={guard(RR.renewals, <PolicyRenewalsPage />)} />
           <Route path="claims" element={guard(RR.claims, <ClaimsQueuePage />)} />
           <Route path="claims/:id" element={guard(RR.claims, <ClaimDetailPage />)} />
           <Route path="tasks" element={guard(RR.tasks, <TasksPage />)} />
           <Route path="document-review" element={guard(RR.documentReview, <ReviewQueuePage />)} />
           <Route path="adjuster" element={guard(RR.adjuster, <AdjusterDashboard />)} />
           <Route path="manager" element={guard(RR.manager, <ManagerDashboard />)} />
-          <Route path="manager/unassigned" element={guard(RR.manager, <UnassignedClaimsPage />)} />
-          <Route path="manager/reserves" element={guard(RR.manager, <ReserveApprovalsPage />)} />
-          <Route path="manager/settlements" element={guard(RR.manager, <SettlementApprovalsPage />)} />
+          <Route path="manager/unassigned" element={guard(RR.unassigned, <UnassignedClaimsPage />)} />
+          <Route path="manager/reserves" element={guard(RR.reserves, <ReserveApprovalsPage />)} />
+          <Route path="settlements" element={guard(RR.settlements, <SettlementApprovalsPage />)} />
           <Route path="manager/decisions" element={guard(RR.decisions, <DecisionHistoryPage />)} />
           <Route path="compliance" element={guard(RR.compliance, <ComplianceQueuePage />)} />
           <Route path="payments" element={guard(RR.payments, <PaymentQueuePage key="queue" view="queue" />)} />
@@ -95,6 +99,8 @@ export function AppRoutes() {
           <Route path="customer-records" element={guard(RR.customerRecords, <CustomerRecordsPage />)} />
           <Route path="customer-records/:id" element={guard(RR.customerRecords, <CustomerRecordDetailPage />)} />
           <Route path="automation/reminders" element={guard(RR.automation, <RemindersPage />)} />
+          <Route path="config" element={guard(RR.config, <ConfigurationPage />)} />
+          <Route path="integrations" element={guard(RR.integrations, <IntegrationsPage />)} />
           <Route path="notifications" element={<NotificationsPage />} />
           <Route path="profile" element={<ProfilePage />} />
         </Route>

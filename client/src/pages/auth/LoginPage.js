@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button.js'
 import { Input } from '@/components/ui/input.js'
 
 export default function LoginPage() {
-  const { login, appMode, modeMismatch } = useAuth()
+  const { login, demoData, serverUnreachable } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const [error, setError] = useState(null)
@@ -21,7 +21,9 @@ export default function LoginPage() {
     setError(null)
     try {
       await login(values.email, values.password)
-      navigate(location.state?.from?.pathname || '/', { replace: true })
+      // Some demo accounts open a specific page after sign-in (e.g. Customer Records).
+      const demoTarget = DEMO_ACCOUNTS.find((a) => a.email === values.email.trim().toLowerCase())?.to
+      navigate(location.state?.from?.pathname || demoTarget || '/', { replace: true })
     } catch (err) {
       setError(err.message || 'Sign-in failed')
     }
@@ -51,7 +53,7 @@ export default function LoginPage() {
             Forgot password?
           </Link>
         </div>
-        <Button type="submit" className="w-full" loading={formState.isSubmitting} disabled={modeMismatch}>
+        <Button type="submit" className="w-full" loading={formState.isSubmitting} disabled={serverUnreachable}>
           <LogIn /> Sign in
         </Button>
       </form>
@@ -63,11 +65,11 @@ export default function LoginPage() {
         </Link>
       </p>
 
-      {appMode === 'mock' && (
+      {demoData && (
         <div className="mt-8 rounded-xl border border-amber-300 bg-amber-50 p-4">
-          <p className="text-sm font-semibold text-amber-900">Mock mode demo accounts</p>
+          <p className="text-sm font-semibold text-amber-900">Demo accounts</p>
           <p className="mt-1 text-xs text-amber-900/80">
-            Fictional users seeded by the local API. Password: the server&apos;s MOCK_DEMO_PASSWORD (default <code className="font-mono">HarborDemo!2026</code>).
+            Fictional users seeded by the local API. Password: the server&apos;s DEMO_PASSWORD (default <code className="font-mono">HarborDemo!2026</code>).
           </p>
           <div className="mt-3 grid grid-cols-2 gap-1.5">
             {DEMO_ACCOUNTS.map((a) => (

@@ -18,8 +18,11 @@
     "test:server": "npm run test -w server",
     "test:client": "npm run test -w client",
     "lint": "npm run lint -w server && npm run lint -w client",
-    "provision:dev": "npm run provision:dev -w server",
-    "db:transitions-sql": "node server/scripts/generate-transition-sql.js"
+    "db:transitions-sql": "node server/scripts/generate-transition-sql.js",
+    "db:migrate": "npm run db:migrate -w server",
+    "db:status": "npm run db:status -w server",
+    "db:seed-demo": "npm run db:seed-demo -w server",
+    "db:import-supabase": "npm run db:import-supabase -w server --"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"

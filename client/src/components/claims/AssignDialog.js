@@ -9,9 +9,9 @@ import { Select } from '@/components/ui/select.js'
 import { FormField } from '@/components/common/FormField.js'
 
 const ROLE_OPTIONS = [
-  { value: 'OPERATIONS_OWNER', label: 'Operations owner', userRole: 'CLAIMS_OPERATIONS', permission: 'claims.assign' },
+  { value: 'OPERATIONS_OWNER', label: 'Operations owner', userRole: 'CLAIMS_OPS_MANAGER', permission: 'claims.assign' },
   { value: 'DOCUMENT_REVIEWER', label: 'Document reviewer', userRole: 'DOCUMENT_REVIEWER', permission: 'claims.assign' },
-  { value: 'ADJUSTER', label: 'Adjuster', userRole: 'CLAIMS_ADJUSTER', permission: 'claims.assignAdjuster' },
+  { value: 'ADJUSTER', label: 'Adjuster', userRole: 'ADJUSTER', permission: 'claims.assignAdjuster' },
 ]
 
 export function AssignDialog({ open, onOpenChange, claim, defaultRole = 'ADJUSTER', onAssigned }) {

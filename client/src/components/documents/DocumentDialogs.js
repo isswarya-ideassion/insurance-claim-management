@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Download, FileUp, UploadCloud } from 'lucide-react'
-import { DOCUMENT_CATEGORIES, ALLOWED_UPLOAD_MIME_TYPES, MAX_UPLOAD_BYTES, humanize } from '@shared/constants.js'
+import { DOCUMENT_TYPES, INTERNAL_DOCUMENT_TYPES, ALLOWED_UPLOAD_MIME_TYPES, MAX_UPLOAD_BYTES, humanize } from '@shared/constants.js'
 import { documentsService, saveBlob } from '@/services/documentsService.js'
 import { useAction } from '@/hooks/useApi.js'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog.js'
@@ -11,10 +11,10 @@ import { FormField } from '@/components/common/FormField.js'
 import { formatFileSize } from '@/utils/format.js'
 import { cn } from '@/lib/utils.js'
 
-const CUSTOMER_CATEGORIES = DOCUMENT_CATEGORIES.filter((c) => !['INVESTIGATION_EVIDENCE', 'COMPLIANCE_EVIDENCE'].includes(c))
+const CUSTOMER_DOC_TYPES = DOCUMENT_TYPES.filter((c) => !INTERNAL_DOCUMENT_TYPES.includes(c))
 
-export function UploadDocumentDialog({ open, onOpenChange, claimId, customer = false, defaultCategory, replaces, informationRequestId, onUploaded }) {
-  const [category, setCategory] = useState(defaultCategory || '')
+export function UploadDocumentDialog({ open, onOpenChange, claimId, customer = false, defaultDocType, replaces, artifactRequirementId, onUploaded }) {
+  const [docType, setDocType] = useState(defaultDocType || '')
   const [file, setFile] = useState(null)
   const [localError, setLocalError] = useState(null)
   const [dragging, setDragging] = useState(false)
@@ -23,11 +23,11 @@ export function UploadDocumentDialog({ open, onOpenChange, claimId, customer = f
 
   useEffect(() => {
     if (open) {
-      setCategory(replaces?.category || defaultCategory || '')
+      setDocType(replaces?.doc_type || defaultDocType || '')
       setFile(null)
       setLocalError(null)
     }
-  }, [open, defaultCategory, replaces])
+  }, [open, defaultDocType, replaces])
 
   function pick(f) {
     setLocalError(null)
@@ -39,7 +39,7 @@ export function UploadDocumentDialog({ open, onOpenChange, claimId, customer = f
 
   async function submit() {
     const result = await action.run(
-      () => documentsService.upload(claimId, { file, category, informationRequestId, replacesDocumentId: replaces?.id }),
+      () => documentsService.upload(claimId, { file, docType, artifactRequirementId, replacesDocumentId: replaces?.id }),
       { success: replaces ? 'New version uploaded' : 'Document uploaded' },
     )
     if (result) {
@@ -48,7 +48,7 @@ export function UploadDocumentDialog({ open, onOpenChange, claimId, customer = f
     }
   }
 
-  const categories = customer ? CUSTOMER_CATEGORIES : DOCUMENT_CATEGORIES
+  const docTypes = customer ? CUSTOMER_DOC_TYPES : DOCUMENT_TYPES
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
@@ -57,8 +57,8 @@ export function UploadDocumentDialog({ open, onOpenChange, claimId, customer = f
           <DialogDescription>Files are stored privately and are only visible to people authorized for this claim. PDF, JPEG, PNG or WebP up to 10 MB.</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
-          <FormField label="Document category" required>
-            <Select value={category} onValueChange={setCategory} placeholder="Select category" disabled={Boolean(replaces)} options={categories.map((c) => ({ value: c, label: humanize(c) }))} />
+          <FormField label="Document type" required>
+            <Select value={docType} onValueChange={setDocType} placeholder="Select document type" disabled={Boolean(replaces)} options={docTypes.map((c) => ({ value: c, label: humanize(c) }))} />
           </FormField>
           <div
             onDragOver={(e) => {
@@ -92,7 +92,7 @@ export function UploadDocumentDialog({ open, onOpenChange, claimId, customer = f
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button onClick={submit} loading={action.pending} disabled={!file || !category}>
+          <Button onClick={submit} loading={action.pending} disabled={!file || !docType}>
             Upload
           </Button>
         </DialogFooter>
@@ -131,7 +131,7 @@ export function ReviewDocumentDialog({ open, onOpenChange, document, onReviewed 
         <DialogHeader>
           <DialogTitle>Review document</DialogTitle>
           <DialogDescription>
-            {document?.file_name} · {humanize(document?.category)} · version {document?.version_no}
+            {document?.file_name} · {humanize(document?.doc_type)} · version {document?.version}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">

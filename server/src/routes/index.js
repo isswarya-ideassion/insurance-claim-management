@@ -8,9 +8,9 @@ import { claimsRoutes } from '../modules/claims/claims.routes.js'
 import { assignmentsRoutes } from '../modules/assignments/assignments.routes.js'
 import { documentsRoutes } from '../modules/documents/documents.routes.js'
 import { tasksRoutes } from '../modules/tasks/tasks.routes.js'
-import { assessmentsRoutes } from '../modules/assessments/assessments.routes.js'
+import { evaluationsRoutes } from '../modules/evaluations/evaluations.routes.js'
 import { reservesRoutes } from '../modules/reserves/reserves.routes.js'
-import { approvalsRoutes } from '../modules/approvals/approvals.routes.js'
+import { settlementsRoutes } from '../modules/settlements/settlements.routes.js'
 import { complianceRoutes } from '../modules/compliance/compliance.routes.js'
 import { paymentsRoutes } from '../modules/payments/payments.routes.js'
 import { notificationsRoutes } from '../modules/notifications/notifications.routes.js'
@@ -19,6 +19,9 @@ import { auditRoutes } from '../modules/audit/audit.routes.js'
 import { adminRoutes } from '../modules/admin/admin.routes.js'
 import { customersRoutes } from '../modules/customers/customers.routes.js'
 import { automationRoutes } from '../modules/automation/automation.routes.js'
+import { closureRoutes } from '../modules/closure/closure.routes.js'
+import { configRoutes } from '../modules/config/config.routes.js'
+import { integrationsRoutes } from '../modules/integrations/integrations.routes.js'
 
 export function createApiRouter(config) {
   const router = Router()
@@ -26,8 +29,8 @@ export function createApiRouter(config) {
   router.get('/health', (req, res) =>
     ok(res, {
       status: 'ok',
-      mode: config.DATA_MODE,
-      mockMode: config.isMock,
+      database: 'postgres',
+      demoData: config.demoData,
       simulatedPayments: true,
       aiConfigured: config.AI_PROVIDER !== 'none',
       time: new Date().toISOString(),
@@ -51,9 +54,9 @@ export function createApiRouter(config) {
   router.use(assignmentsRoutes())
   router.use(documentsRoutes())
   router.use(tasksRoutes())
-  router.use(assessmentsRoutes())
+  router.use(evaluationsRoutes())
   router.use(reservesRoutes())
-  router.use(approvalsRoutes())
+  router.use(settlementsRoutes())
   router.use(complianceRoutes())
   router.use(paymentsRoutes())
   router.use(notificationsRoutes())
@@ -62,6 +65,9 @@ export function createApiRouter(config) {
   router.use(adminRoutes())
   router.use(customersRoutes())
   router.use(automationRoutes())
+  router.use(closureRoutes())
+  router.use(configRoutes())
+  router.use(integrationsRoutes())
 
   return router
 }

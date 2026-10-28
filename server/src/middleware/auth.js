@@ -2,24 +2,23 @@ import { can, hasAnyRole } from '../../../shared/permissions.js'
 import { forbidden, unauthorized } from '../utils/errors.js'
 
 export async function loadUserContext(db, identity) {
-  const profile = await db.findById('profiles', identity.id)
-  if (!profile) throw unauthorized('No profile exists for this account')
-  if (!profile.is_active) throw forbidden('This account has been deactivated', 'ACCOUNT_DISABLED')
-  const roleRows = await db.findMany('user_roles', { where: { user_id: profile.id } })
+  const user = await db.findById('users', identity.id)
+  if (!user) throw unauthorized('No user record exists for this account')
+  if (!user.is_active) throw forbidden('This account has been deactivated', 'ACCOUNT_DISABLED')
+  const roleRows = await db.findMany('user_roles', { where: { user_id: user.id } })
   const roles = roleRows.map((r) => r.role_code)
   if (roles.length === 0) throw forbidden('No roles are assigned to this account', 'NO_ROLES')
-  const manager = roleRows.find((r) => r.role_code === 'CLAIMS_MANAGER')
   return {
-    id: profile.id,
-    email: profile.email,
-    fullName: profile.full_name,
-    phone: profile.phone,
+    id: user.id,
+    email: user.email,
+    fullName: user.full_name,
+    phone: user.phone,
     roles,
-    approvalLimit: manager?.approval_limit ?? null,
+    type: 'USER',
   }
 }
 
-/** Verifies the bearer token, loads profile + roles, and builds req.ctx for services. */
+/** Verifies the bearer token, loads the user and roles, and builds req.ctx for services. */
 export async function authenticate(req, res, next) {
   const match = /^Bearer\s+(.+)$/i.exec(req.get('authorization') || '')
   if (!match) throw unauthorized()

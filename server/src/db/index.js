@@ -1,19 +1,15 @@
 import { createRepository } from './repository.js'
+import { createPgExecutor } from './pgExecutor.js'
+import { migrate } from './migrate.js'
 
-/**
- * Creates the data layer for the configured mode.
- *   supabase -> node-postgres pool against the Supabase database
- *   mock     -> embedded PGlite running the same migrations (local demo / tests)
- */
-export async function createDatabase(config) {
-  let executor
-  if (config.DATA_MODE === 'supabase') {
-    const { createPgExecutor } = await import('./pgExecutor.js')
-    executor = createPgExecutor({ connectionString: config.SUPABASE_DB_URL, ssl: config.SUPABASE_DB_SSL })
-  } else {
-    const { createPgliteExecutor } = await import('./pgliteExecutor.js')
-    executor = await createPgliteExecutor({ dataDir: config.mock.dbDir })
-  }
+/** Creates the data layer: a node-postgres pool on DATABASE_URL, migrated on start unless disabled. */
+export async function createDatabase(config, { log = () => {} } = {}) {
+  const executor = createPgExecutor({
+    connectionString: config.DATABASE_URL,
+    ssl: config.DATABASE_SSL,
+    max: config.DATABASE_POOL_MAX,
+  })
+  if (config.DB_MIGRATE_ON_START) await migrate(executor, { log })
   const db = createRepository(executor)
   db.kind = executor.kind
   db.close = executor.close

@@ -1,46 +1,36 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import path from 'node:path'
+import { createHash } from 'node:crypto'
 import { AppError, notFound } from '../utils/errors.js'
 
-/** Private object storage in a Supabase bucket. Objects are never exposed by public URL. */
-export function createSupabaseStorage(supabaseAdmin, bucket) {
+/**
+ * Private document storage in PostgreSQL (public.document_files). Objects are
+ * write-once and never exposed by URL: downloads are streamed through the API
+ * after an access check. Pass a transaction-scoped repository as `t` to store
+ * the file in the same transaction as its metadata.
+ */
+export function createDatabaseStorage(db) {
   return {
-    kind: 'supabase',
-    async put(objectPath, buffer, contentType) {
-      const { error } = await supabaseAdmin.storage.from(bucket).upload(objectPath, buffer, {
-        contentType,
-        upsert: false,
-      })
-      if (error) throw new AppError(502, 'STORAGE_ERROR', `Could not store file: ${error.message}`)
-    },
-    async get(objectPath) {
-      const { data, error } = await supabaseAdmin.storage.from(bucket).download(objectPath)
-      if (error || !data) throw notFound('Stored file not found')
-      return Buffer.from(await data.arrayBuffer())
-    },
-  }
-}
-
-/** MOCK MODE: files are written to a gitignored local directory. */
-export function createLocalStorage(rootDir) {
-  const resolve = (objectPath) => {
-    const full = path.resolve(rootDir, objectPath)
-    if (!full.startsWith(path.resolve(rootDir) + path.sep)) throw new AppError(400, 'INVALID_PATH', 'Invalid storage path')
-    return full
-  }
-  return {
-    kind: 'local',
-    async put(objectPath, buffer) {
-      const full = resolve(objectPath)
-      await mkdir(path.dirname(full), { recursive: true })
-      await writeFile(full, buffer, { flag: 'wx' })
-    },
-    async get(objectPath) {
+    kind: 'postgres',
+    async put(storageKey, buffer, contentType, t = db) {
+      const sha256 = createHash('sha256').update(buffer).digest('hex')
       try {
-        return await readFile(resolve(objectPath))
-      } catch {
-        throw notFound('Stored file not found')
+        await t.query(
+          `insert into public.document_files (storage_key, content, mime_type, size_bytes, sha256)
+           values ($1, $2, $3, $4, $5)`,
+          [storageKey, buffer, contentType, buffer.length, sha256],
+        )
+      } catch (err) {
+        if (err.code === 'DUPLICATE') throw new AppError(409, 'STORAGE_KEY_EXISTS', 'A file is already stored under this key')
+        throw err
       }
+    },
+    async get(storageKey) {
+      const rows = await db.query('select content, sha256 from public.document_files where storage_key = $1', [storageKey])
+      if (!rows[0]) throw notFound('Stored file not found')
+      const content = Buffer.from(rows[0].content)
+      if (createHash('sha256').update(content).digest('hex') !== rows[0].sha256) {
+        throw new AppError(500, 'STORAGE_INTEGRITY_ERROR', 'Stored file failed its integrity check')
+      }
+      return content
     },
   }
 }

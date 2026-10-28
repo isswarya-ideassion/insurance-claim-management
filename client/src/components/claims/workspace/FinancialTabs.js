@@ -1,44 +1,111 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Gavel, Scale } from 'lucide-react'
+import { Gavel, PencilLine, Scale } from 'lucide-react'
+import { RESERVE_REASON_CODES, ROLE_LABELS } from '@shared/constants.js'
 import { approvalsService, paymentsService } from '@/services/workflowService.js'
-import { useApiQuery } from '@/hooks/useApi.js'
+import { useApiQuery, useAction } from '@/hooks/useApi.js'
 import { useAuth } from '@/context/AuthContext.js'
-import { SectionCard } from '@/components/common/FormField.js'
+import { FormField, SectionCard } from '@/components/common/FormField.js'
 import { DataTable } from '@/components/common/DataTable.js'
 import { QueryState } from '@/components/common/States.js'
 import { StatusBadge } from '@/components/common/StatusBadge.js'
 import { Button } from '@/components/ui/button.js'
+import { Input, Textarea } from '@/components/ui/input.js'
+import { Select } from '@/components/ui/select.js'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog.js'
 import { DecisionDialog } from '@/components/approvals/DecisionDialog.js'
 import { SimulatedNotice } from '@/components/payments/PaymentDetailPanel.js'
 import { formatDateTime, formatMoney, humanize } from '@/utils/format.js'
 
+// System-recorded ledger entries (manager modifications, payments, closure releases) cannot be entered by hand.
+const MANUAL_REASON_CODES = RESERVE_REASON_CODES.filter((c) => !['MANAGER_MODIFIED', 'PAYMENT_ISSUED', 'CLOSURE_RELEASE'].includes(c))
+const REVISABLE_STATUSES = ['INVESTIGATION', 'COMPLIANCE_REVIEW', 'SETTLEMENT_APPROVAL', 'PAYMENT_PENDING', 'PAYMENT_FAILED', 'PAID', 'REOPENED']
+
+function ReviseReserveDialog({ open, onOpenChange, claimId, onSaved }) {
+  const [form, setForm] = useState({ amount: '', reasonCode: 'REVISED_ESTIMATE', notes: '' })
+  const action = useAction()
+  const set = (k) => (v) => setForm((f) => ({ ...f, [k]: v?.target ? v.target.value : v }))
+  async function submit() {
+    const result = await action.run(() => approvalsService.reviseReserve(claimId, { amount: Number(form.amount), reasonCode: form.reasonCode, notes: form.notes || undefined }))
+    if (result) {
+      onOpenChange(false)
+      onSaved?.(result)
+    }
+  }
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Revise reserve</DialogTitle>
+          <DialogDescription>Each revision is a new ledger entry. Within your reserve authority it posts immediately; above it, a Claims Manager reviews it.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <FormField label="New reserve amount (₹)" required>
+            <Input type="number" min="0" step="0.01" value={form.amount} onChange={set('amount')} />
+          </FormField>
+          <FormField label="Reason" required>
+            <Select value={form.reasonCode} onValueChange={set('reasonCode')} options={MANUAL_REASON_CODES.map((c) => ({ value: c, label: humanize(c) }))} />
+          </FormField>
+          <FormField label="Notes">
+            <Textarea value={form.notes} onChange={set('notes')} />
+          </FormField>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button variant="accent" onClick={submit} loading={action.pending} disabled={form.amount === '' || Number(form.amount) < 0}>
+            Save revision
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 export function ReservesTab({ detail, reload }) {
   const { claim } = detail
-  const { can } = useAuth()
+  const { can, user } = useAuth()
   const query = useApiQuery(() => approvalsService.claimReserves(claim.id), [claim.id, claim.status])
   const [deciding, setDeciding] = useState(null)
+  const [revising, setRevising] = useState(false)
+  const canRevise = can('reserves.set') && claim.assigned_adjuster_id === user.id && REVISABLE_STATUSES.includes(claim.status)
+  const refresh = async () => {
+    await query.reload()
+    reload()
+  }
   return (
-    <SectionCard title="Reserve requests" description="Reserves are approved separately from settlements, by a manager within their approval limit." bodyClassName="p-0">
+    <SectionCard
+      title="Reserve ledger"
+      description="Every reserve change is an immutable entry. Entries within the adjuster's authority post directly; larger ones need Claims Manager review."
+      bodyClassName="p-0"
+      actions={
+        canRevise && (
+          <Button size="sm" variant="outline" onClick={() => setRevising(true)}>
+            <PencilLine /> Revise reserve
+          </Button>
+        )
+      }
+    >
       <QueryState query={query}>
         {(rows) => (
           <DataTable
             rows={rows}
-            empty={<p className="p-4 text-sm text-muted-foreground">No reserve requests yet.</p>}
+            empty={<p className="p-4 text-sm text-muted-foreground">No reserve entries yet.</p>}
             columns={[
               { key: 'amount', header: 'Amount', className: 'tabular font-medium', cell: (r) => formatMoney(r.amount) },
-              { key: 'status', header: 'Status', cell: (r) => <StatusBadge value={r.status} /> },
-              { key: 'reason', header: 'Justification', cell: (r) => r.reason || '—' },
-              { key: 'requested_by_name', header: 'Requested by' },
-              { key: 'requested_at', header: 'Requested', cell: (r) => formatDateTime(r.requested_at) },
-              { key: 'decided_at', header: 'Decided', cell: (r) => formatDateTime(r.decided_at) },
+              { key: 'approval_status', header: 'Status', cell: (r) => <StatusBadge value={r.approval_status} /> },
+              { key: 'reason_code', header: 'Reason', cell: (r) => humanize(r.reason_code) },
+              { key: 'coverage_line', header: 'Coverage line', cell: (r) => humanize(r.coverage_line) || '—' },
+              { key: 'notes', header: 'Notes', cell: (r) => r.notes || '—' },
+              { key: 'set_by_name', header: 'Set by', cell: (r) => r.set_by_name || 'System' },
+              { key: 'effective_at', header: 'Effective', cell: (r) => formatDateTime(r.effective_at) },
+              { key: 'approved_by_name', header: 'Reviewed by', cell: (r) => (r.approved_by_name ? `${r.approved_by_name} · ${formatDateTime(r.approved_at)}` : '—') },
               {
                 key: 'actions',
                 header: <span className="sr-only">Actions</span>,
                 cell: (r) =>
-                  r.status === 'PENDING_APPROVAL' && can('reserves.decide') && claim.status === 'RESERVE_APPROVAL' ? (
+                  r.approval_status === 'PENDING_REVIEW' && can('reserves.review') && claim.status === 'RESERVE_APPROVAL' ? (
                     <Button size="sm" variant="accent" onClick={() => setDeciding(r)}>
-                      <Scale /> Decide
+                      <Scale /> Review
                     </Button>
                   ) : null,
               },
@@ -49,17 +116,32 @@ export function ReservesTab({ detail, reload }) {
       <DecisionDialog
         open={Boolean(deciding)}
         onOpenChange={(o) => !o && setDeciding(null)}
-        title={`Reserve decision — ${claim.claim_number}`}
+        title={`Reserve review — ${claim.claim_number}`}
         item={deciding}
-        details={deciding ? [{ label: 'Requested by', value: deciding.requested_by_name }, { label: 'Claimed amount', value: formatMoney(claim.estimated_loss) }] : []}
+        allowModify
+        details={deciding ? [{ label: 'Set by', value: deciding.set_by_name }, { label: 'Claimed amount', value: formatMoney(claim.estimated_loss) }] : []}
         onDecide={async (body) => {
-          const result = await approvalsService.decideReserve(deciding.id, body)
-          await query.reload()
-          reload()
+          const result = await approvalsService.reviewReserve(deciding.id, body)
+          await refresh()
           return result
         }}
       />
+      <ReviseReserveDialog open={revising} onOpenChange={setRevising} claimId={claim.id} onSaved={refresh} />
     </SectionCard>
+  )
+}
+
+export function StepsSummary({ steps = [] }) {
+  if (!steps.length) return '—'
+  return (
+    <ol className="space-y-0.5 text-xs">
+      {steps.map((s) => (
+        <li key={s.id}>
+          {s.step_no}. {ROLE_LABELS[s.required_role]} · <span className="font-medium">{humanize(s.status)}</span>
+          {s.approver_name && ` by ${s.approver_name}`}
+        </li>
+      ))}
+    </ol>
   )
 }
 
@@ -71,23 +153,24 @@ export function ApprovalsTab({ detail, reload }) {
   const [deciding, setDeciding] = useState(null)
   return (
     <div className="space-y-5">
-      <SectionCard title="Settlement requests" description="Created when compliance clears the claim. A separate workflow from reserve approval." bodyClassName="p-0">
+      <SectionCard title="Settlement approvals" description="Created when compliance clears the claim. The assigned adjuster approves it within their settlement authority; larger amounts go to a Claims Manager." bodyClassName="p-0">
         <QueryState query={settlements}>
           {(rows) => (
             <DataTable
               rows={rows}
-              empty={<p className="p-4 text-sm text-muted-foreground">No settlement requests yet.</p>}
+              empty={<p className="p-4 text-sm text-muted-foreground">No settlements yet.</p>}
               columns={[
                 { key: 'amount', header: 'Amount', className: 'tabular font-medium', cell: (s) => formatMoney(s.amount) },
                 { key: 'status', header: 'Status', cell: (s) => <StatusBadge value={s.status} /> },
-                { key: 'beneficiary_name', header: 'Beneficiary', cell: (s) => `${s.beneficiary_name} (${s.beneficiary_account_masked || 'no account'})` },
-                { key: 'requested_by_name', header: 'Requested by' },
+                { key: 'payee_name', header: 'Payee', cell: (s) => `${s.payee_name || '—'} (${s.payee_account_masked || 'no account'})` },
+                { key: 'steps', header: 'Approval steps', cell: (s) => <StepsSummary steps={s.steps} /> },
+                { key: 'requested_by_name', header: 'Prepared by' },
                 { key: 'requested_at', header: 'Requested', cell: (s) => formatDateTime(s.requested_at) },
                 {
                   key: 'actions',
                   header: <span className="sr-only">Actions</span>,
                   cell: (s) =>
-                    s.status === 'PENDING_APPROVAL' && can('settlements.decide') && claim.status === 'SETTLEMENT_APPROVAL' ? (
+                    s.status === 'PENDING_APPROVAL' && can('settlements.approve') && s.canDecide && claim.status === 'SETTLEMENT_APPROVAL' ? (
                       <Button size="sm" variant="accent" onClick={() => setDeciding(s)}>
                         <Gavel /> Decide
                       </Button>
@@ -98,7 +181,7 @@ export function ApprovalsTab({ detail, reload }) {
           )}
         </QueryState>
       </SectionCard>
-      <SectionCard title="Decision history" description="Every approval decision is an immutable record." bodyClassName="p-0">
+      <SectionCard title="Decision history" description="Reserve, evaluation, closure and settlement decisions. Every decision is an immutable record." bodyClassName="p-0">
         <QueryState query={decisions}>
           {(rows) => (
             <DataTable
@@ -121,10 +204,10 @@ export function ApprovalsTab({ detail, reload }) {
       <DecisionDialog
         open={Boolean(deciding)}
         onOpenChange={(o) => !o && setDeciding(null)}
-        title={`Settlement decision — ${claim.claim_number}`}
+        title={`Settlement approval — ${claim.claim_number}`}
         item={deciding}
         complianceHold={complianceHold}
-        details={deciding ? [{ label: 'Beneficiary', value: deciding.beneficiary_name }, { label: 'Account', value: deciding.beneficiary_account_masked }] : []}
+        details={deciding ? [{ label: 'Payee', value: deciding.payee_name }, { label: 'Account', value: deciding.payee_account_masked }, { label: 'Payee verification', value: humanize(deciding.payee_verification) }] : []}
         onDecide={async (body) => {
           const result = await approvalsService.decideSettlement(deciding.id, body)
           await Promise.all([settlements.reload(), decisions.reload()])
@@ -142,13 +225,13 @@ export function PaymentsTab({ detail }) {
   return (
     <div className="space-y-4">
       <SimulatedNotice />
-      <QueryState query={query} empty={<p className="rounded-xl border bg-card p-6 text-sm text-muted-foreground">No payment requests. Payments are created when a settlement is approved.</p>}>
+      <QueryState query={query} empty={<p className="rounded-xl border bg-card p-6 text-sm text-muted-foreground">No payments yet. A payment is created when compliance clears the claim and can be issued once its settlement approval completes.</p>}>
         {(rows) =>
           rows.map((p) => (
             <SectionCard
               key={p.id}
               title={`Payment ${formatMoney(p.amount)}`}
-              description={`${p.beneficiary_name} · ${p.beneficiary_account_masked}`}
+              description={`${p.payee_name} · ${p.payee_account_masked}`}
               actions={
                 <>
                   <StatusBadge value={p.status} />

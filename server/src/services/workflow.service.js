@@ -3,8 +3,8 @@ import {
   STATUS_LABELS,
   CUSTOMER_STATUS_LABELS,
   INTAKE_CHECKLIST,
-  REQUIRED_DOCUMENTS,
   OPEN_TASK_STATUSES,
+  ACTIVE_RESERVE_STATUSES,
 } from '../../../shared/constants.js'
 import {
   findTransition,
@@ -12,17 +12,19 @@ import {
   rolesCanExecute,
   allowedTargets,
   GUARD_DESCRIPTIONS,
-  STATUS_SLA_HOURS,
 } from '../../../shared/workflow.js'
 import { AppError, businessRule, forbidden, validationError } from '../utils/errors.js'
 import { hoursFromNow } from '../utils/format.js'
 import { recordAudit } from './audit.service.js'
 import { checkClaimEligibility } from './eligibility.service.js'
+import { slaHours } from './config.service.js'
+import { recordStageChange } from './sla.service.js'
+import { assignIntakeOwner } from './intakeRouting.service.js'
 import { notify, claimLink, userIdsWithRole } from './notification.service.js'
 
 const DEFAULT_CUSTOMER_MESSAGES = {
   SUBMITTED: 'Your claim has been submitted and will be reviewed shortly.',
-  POLICY_VERIFICATION: 'We are verifying your policy details.',
+  POLICY_VERIFICATION: 'We are verifying your policy cover.',
   DOCUMENTS_REQUIRED: 'We need additional documents to continue processing your claim.',
   DOCUMENT_REVIEW: 'Your documents are being reviewed.',
   INVESTIGATION: 'An adjuster is assessing your claim.',
@@ -31,7 +33,7 @@ const DEFAULT_CUSTOMER_MESSAGES = {
   PAYMENT_FAILED: 'There was a delay processing your payment. Our team is working on it.',
   PAID: 'Your settlement payment has been completed.',
   CLOSED: 'Your claim has been closed.',
-  REJECTED: 'Your claim could not be approved. Please review the details provided.',
+  REJECTED: 'Your claim could not be approved. Please review the reasons provided.',
   WITHDRAWN: 'Your claim has been withdrawn.',
   REOPENED: 'Your claim has been reopened for further review.',
 }
@@ -39,19 +41,18 @@ const DEFAULT_CUSTOMER_MESSAGES = {
 // ---------------------------------------------------------------------------
 // Guards
 // ---------------------------------------------------------------------------
+
+/** Required artifacts of the claim that are neither accepted nor waived. */
 export async function missingRequiredDocuments(t, claim) {
-  const required = REQUIRED_DOCUMENTS[claim.claim_type] || []
-  if (required.length === 0) return []
-  const accepted = await t.query(
-    `select distinct category from public.documents where claim_id = $1 and status = 'ACCEPTED'`,
-    [claim.id],
-  )
-  const have = new Set(accepted.map((r) => r.category))
-  return required.filter((c) => !have.has(c))
+  const rows = await t.findMany('artifact_requirements', {
+    where: { claim_id: claim.id, is_required: true, status: { nin: ['ACCEPTED', 'WAIVED'] } },
+    columns: ['doc_type'],
+  })
+  return rows.map((r) => r.doc_type)
 }
 
 export async function hasActiveComplianceHold(t, claimId) {
-  return (await t.count('compliance_reviews', { claim_id: claimId, hold_active: true })) > 0
+  return (await t.count('reviews', { claim_id: claimId, checkpoint_type: 'COMPLIANCE', hold_active: true })) > 0
 }
 
 const GUARDS = {
@@ -60,7 +61,13 @@ const GUARDS = {
     return result.eligible || result.reasons.join('; ')
   },
   declarationAccepted: (t, claim) => Boolean(claim.declaration_accepted),
-  policyVerified: (t, claim) => claim.policy_verified === true,
+  coverageConfirmed: (t, claim) => claim.coverage_result === 'COVERED',
+  async payeeVerified(t, claim) {
+    const policy = claim.policy_id ? await t.findOne('policies', { id: claim.policy_id }, { columns: ['payee_id'] }) : null
+    const payee = policy?.payee_id ? await t.findOne('payees', { id: policy.payee_id }, { columns: ['verification_status', 'bank_details_encrypted'] }) : null
+    if (!payee || !payee.bank_details_encrypted) return 'Payee bank details have not been collected yet'
+    return payee.verification_status === 'VERIFIED' || 'Payee bank details are recorded but not yet verified'
+  },
   intakeChecklistComplete(t, claim) {
     const missing = INTAKE_CHECKLIST.filter((i) => !claim.intake_checklist?.[i.key]?.checked)
     return missing.length === 0 || `Incomplete intake items: ${missing.map((m) => m.label).join(', ')}`
@@ -74,35 +81,40 @@ const GUARDS = {
     return missing.length === 0 || `Required documents not yet accepted: ${missing.join(', ')}`
   },
   adjusterAssigned: (t, claim) => Boolean(claim.assigned_adjuster_id),
-  async assessmentSubmitted(t, claim) {
-    return (await t.count('assessments', { claim_id: claim.id, status: 'SUBMITTED' })) > 0
+  async evaluationSubmitted(t, claim) {
+    return (await t.count('evaluations', { claim_id: claim.id, status: { in: ['SUBMITTED', 'APPROVED'] } })) > 0
   },
-  async reservePending(t, claim) {
-    return (await t.count('reserves', { claim_id: claim.id, status: 'PENDING_APPROVAL' })) > 0
+  async reservePendingReview(t, claim) {
+    return (await t.count('reserves', { claim_id: claim.id, approval_status: 'PENDING_REVIEW' })) > 0
+  },
+  async reservePosted(t, claim) {
+    const posted = await t.count('reserves', { claim_id: claim.id, approval_status: { in: ACTIVE_RESERVE_STATUSES }, amount: { gt: 0 } })
+    const pending = await t.count('reserves', { claim_id: claim.id, approval_status: 'PENDING_REVIEW' })
+    return (posted > 0 && pending === 0) || (pending > 0 ? 'A reserve is still awaiting manager review' : false)
   },
   async reserveApproved(t, claim) {
-    return (await t.count('reserves', { claim_id: claim.id, status: 'APPROVED' })) > 0
+    return (await t.count('reserves', { claim_id: claim.id, approval_status: { in: ACTIVE_RESERVE_STATUSES } })) > 0
   },
   async complianceCleared(t, claim) {
-    const latest = await t.findOne('compliance_reviews', { claim_id: claim.id }, { orderBy: [['created_at', 'desc']] })
+    const latest = await t.findOne('reviews', { claim_id: claim.id, checkpoint_type: 'COMPLIANCE' }, { orderBy: [['created_at', 'desc']] })
     return ['CLEARED', 'EXCEPTION_APPROVED'].includes(latest?.status)
   },
   async noActiveComplianceHold(t, claim) {
     return !(await hasActiveComplianceHold(t, claim.id))
   },
   async settlementApproved(t, claim) {
-    return (await t.count('settlements', { claim_id: claim.id, status: 'APPROVED' })) > 0
+    return (await t.count('payments', { claim_id: claim.id, status: 'PENDING' })) > 0
   },
   async paymentCompleted(t, claim) {
     return (await t.count('payments', { claim_id: claim.id, status: { in: ['PAID', 'RECONCILED'] } })) > 0
   },
   async noOpenMandatoryTasks(t, claim) {
-    const open = await t.count('tasks', { claim_id: claim.id, is_mandatory: true, status: { in: OPEN_TASK_STATUSES } })
-    return open === 0 || `${open} mandatory task(s) still open`
+    const open = await t.count('tasks', { claim_id: claim.id, blocking: true, status: { in: OPEN_TASK_STATUSES } })
+    return open === 0 || `${open} blocking task(s) still open`
   },
   async noPendingApprovals(t, claim) {
-    const reserves = await t.count('reserves', { claim_id: claim.id, status: 'PENDING_APPROVAL' })
-    const settlements = await t.count('settlements', { claim_id: claim.id, status: 'PENDING_APPROVAL' })
+    const reserves = await t.count('reserves', { claim_id: claim.id, approval_status: 'PENDING_REVIEW' })
+    const settlements = await t.count('payments', { claim_id: claim.id, status: 'PENDING_APPROVAL' })
     return reserves + settlements === 0
   },
   resumesToHeldStatus: (t, claim, target) =>
@@ -133,11 +145,11 @@ function authorizeActor(rule, claim, actor) {
   }
   const isOwner = claim.customer_id === actor.id
   if (isOwner) {
-    return acting.includes(ROLES.CUSTOMER) ? null : 'You cannot act as staff on your own claim'
+    return acting.includes(ROLES.CLIENT) ? null : 'You cannot act as staff on your own claim'
   }
-  const staffActing = acting.filter((r) => r !== ROLES.CUSTOMER)
-  if (staffActing.length === 0) return 'Customers can only act on their own claims'
-  if (staffActing.every((r) => r === ROLES.CLAIMS_ADJUSTER) && claim.assigned_adjuster_id !== actor.id) {
+  const staffActing = acting.filter((r) => r !== ROLES.CLIENT)
+  if (staffActing.length === 0) return 'Clients can only act on their own claims'
+  if (staffActing.every((r) => r === ROLES.ADJUSTER) && claim.assigned_adjuster_id !== actor.id) {
     return 'Only the assigned adjuster can perform this action'
   }
   return null
@@ -212,11 +224,8 @@ export async function transitionClaim(ctx, t, claim, toStatus, options = {}) {
   }
 
   const now = new Date()
-  const update = {
-    ...patch,
-    status: toStatus,
-    due_date: STATUS_SLA_HOURS[toStatus] ? hoursFromNow(STATUS_SLA_HOURS[toStatus], now) : null,
-  }
+  const dueDate = await recordStageChange(t, { ...claim, ...patch }, toStatus, now)
+  const update = { ...patch, status: toStatus, due_date: dueDate, updated_by: actor?.id || null }
   if (toStatus === 'ON_HOLD') update.hold_from_status = from
   if (from === 'ON_HOLD') update.hold_from_status = null
   if (toStatus === 'REJECTED') update.rejection_reason = reason
@@ -229,6 +238,7 @@ export async function transitionClaim(ctx, t, claim, toStatus, options = {}) {
     update.closure_reason = null
   }
 
+  // stage and reopen_count are maintained by the claims_enforce_status_rules trigger.
   const updated = await t.updateById('claims', claim.id, update)
 
   const holdRelated = toStatus === 'ON_HOLD' || from === 'ON_HOLD'
@@ -252,14 +262,15 @@ export async function transitionClaim(ctx, t, claim, toStatus, options = {}) {
     claimId: claim.id,
     before: claim,
     after: updated,
-    metadata: { from, to: toStatus, reason, system },
+    metadata: { from, to: toStatus, reason, system, stage: updated.stage },
   })
 
   await applySideEffects(ctx, t, updated, { from, to: toStatus, rule, reason })
 
   if (customerVisible && message && updated.claim_number) {
     const type =
-      toStatus === 'CLOSED' ? 'CLAIM_CLOSED'
+      toStatus === 'REJECTED' ? 'CLAIM_REJECTED'
+        : toStatus === 'CLOSED' ? 'CLAIM_CLOSED'
         : toStatus === 'DOCUMENTS_REQUIRED' ? 'DOCUMENTS_REQUIRED'
           : toStatus === 'INVESTIGATION' ? 'INVESTIGATION_UPDATE'
             : toStatus === 'SUBMITTED' ? 'CLAIM_SUBMITTED'
@@ -279,6 +290,39 @@ export async function transitionClaim(ctx, t, claim, toStatus, options = {}) {
   return updated
 }
 
+async function addTask(t, claim, task) {
+  return t.insert('tasks', {
+    claim_id: claim.id,
+    priority: claim.priority,
+    source_stage: claim.stage,
+    ...task,
+  })
+}
+
+/** Releases what is left of each reserve line when a paid claim is closed (reserve ledger reaches zero). */
+async function releaseReserves(t, claim, actorId) {
+  const active = await t.findMany('reserves', {
+    where: { claim_id: claim.id, approval_status: { in: ACTIVE_RESERVE_STATUSES }, amount: { gt: 0 } },
+  })
+  for (const r of active) {
+    await t.updateById('reserves', r.id, { approval_status: 'SUPERSEDED' })
+    await t.insert('reserves', {
+      claim_id: claim.id,
+      evaluation_id: r.evaluation_id,
+      coverage_line: r.coverage_line,
+      amount: 0,
+      prev_amount: r.amount,
+      currency: r.currency,
+      reason_code: 'CLOSURE_RELEASE',
+      notes: 'Remaining reserve released at closure',
+      set_by: actorId,
+      created_by: actorId,
+      authority_ok: true,
+      approval_status: 'POSTED',
+    })
+  }
+}
+
 async function applySideEffects(ctx, t, claim, { from, to, rule, reason }) {
   const actorId = ctx.actor?.id || null
 
@@ -288,16 +332,39 @@ async function applySideEffects(ctx, t, claim, { from, to, rule, reason }) {
       { claim_id: claim.id, status: { in: OPEN_TASK_STATUSES } },
       { status: 'CANCELLED', completed_at: new Date(), completed_by: actorId },
     )
-    await t.update('information_requests', { claim_id: claim.id, status: 'OPEN' }, { status: 'CANCELLED', closed_at: new Date() })
+    await t.update(
+      'artifact_requirements',
+      { claim_id: claim.id, status: { in: ['MISSING', 'REQUESTED'] } },
+      { status: 'CANCELLED', closed_at: new Date() },
+    )
+  }
+
+  if (to === 'CLOSED' && rule.closure === 'COMPLETED' && actorId) {
+    await releaseReserves(t, claim, actorId)
+  }
+
+  if (to === 'CLOSED') {
+    await t.update('closure_requests', { claim_id: claim.id, status: 'PENDING' }, { status: 'APPROVED', decided_by: actorId, decided_at: new Date() })
   }
 
   if (to === 'COMPLIANCE_REVIEW') {
-    const open = await t.count('compliance_reviews', { claim_id: claim.id, status: { in: ['PENDING', 'IN_REVIEW', 'HOLD', 'ESCALATED'] } })
+    const open = await t.count('reviews', {
+      claim_id: claim.id,
+      checkpoint_type: 'COMPLIANCE',
+      status: { in: ['PENDING', 'IN_REVIEW', 'HOLD', 'ESCALATED'] },
+    })
     if (open === 0) {
-      await t.insert('compliance_reviews', { claim_id: claim.id, status: 'PENDING', created_by: actorId })
+      await t.insert('reviews', {
+        claim_id: claim.id,
+        checkpoint_type: 'COMPLIANCE',
+        subject_type: 'claim',
+        subject_id: claim.id,
+        status: 'PENDING',
+        created_by: actorId,
+      })
     }
     await notify(ctx, t, {
-      recipientIds: await userIdsWithRole(t, ROLES.COMPLIANCE_OFFICER),
+      recipientIds: await userIdsWithRole(t, ROLES.COMPLIANCE_SECURITY),
       claimId: claim.id,
       type: 'APPROVAL_REQUIRED',
       title: `Compliance review required: ${claim.claim_number}`,
@@ -308,16 +375,16 @@ async function applySideEffects(ctx, t, claim, { from, to, rule, reason }) {
   }
 
   if (to === 'ADJUSTER_ASSIGNMENT') {
-    const existing = await t.count('tasks', { claim_id: claim.id, task_type: 'ASSIGN_ADJUSTER', status: { in: OPEN_TASK_STATUSES } })
+    const existing = await t.count('tasks', { claim_id: claim.id, type: 'ASSIGN_ADJUSTER', status: { in: OPEN_TASK_STATUSES } })
     if (existing === 0) {
-      await t.insert('tasks', {
-        claim_id: claim.id,
+      await addTask(t, claim, {
         title: `Assign an adjuster to ${claim.claim_number}`,
-        task_type: 'ASSIGN_ADJUSTER',
-        assigned_role: ROLES.CLAIMS_MANAGER,
-        priority: claim.priority,
-        is_mandatory: true,
-        due_at: hoursFromNow(STATUS_SLA_HOURS.ADJUSTER_ASSIGNMENT),
+        type: 'ASSIGN_ADJUSTER',
+        // The claim's Claims Operations Manager routes it to an adjuster.
+        owner_user_id: claim.assigned_owner_id || null,
+        owner_role: ROLES.CLAIMS_OPS_MANAGER,
+        blocking: true,
+        due_at: hoursFromNow((await slaHours(t, claim.segment, 'ADJUSTER_ASSIGNMENT')) || 24),
         created_by: actorId,
       })
     }
@@ -336,15 +403,16 @@ async function applySideEffects(ctx, t, claim, { from, to, rule, reason }) {
   }
 
   if (from === 'DRAFT' && to === 'SUBMITTED') {
-    await t.insert('tasks', {
-      claim_id: claim.id,
+    // New claims go straight to a named Claims Operations Manager (lowest workload).
+    const ownerId = await assignIntakeOwner(ctx, t, claim)
+    await addTask(t, claim, {
       title: `Intake review for ${claim.claim_number}`,
-      description: 'Verify policy, complete the intake checklist and route the claim.',
-      task_type: 'INTAKE_REVIEW',
-      assigned_role: ROLES.CLAIMS_OPERATIONS,
-      priority: claim.priority,
-      is_mandatory: true,
-      due_at: hoursFromNow(STATUS_SLA_HOURS.SUBMITTED),
+      description: 'Verify coverage, complete the intake checklist, collect and verify the payee details, and route the claim.',
+      type: 'INTAKE_REVIEW',
+      owner_user_id: ownerId,
+      owner_role: ROLES.CLAIMS_OPS_MANAGER,
+      blocking: true,
+      due_at: hoursFromNow((await slaHours(t, claim.segment, 'SUBMITTED')) || 24),
       created_by: actorId,
     })
   }
@@ -352,7 +420,7 @@ async function applySideEffects(ctx, t, claim, { from, to, rule, reason }) {
   if (to === 'DOCUMENT_REVIEW' || to === 'DOCUMENTS_REQUIRED' || to === 'REJECTED') {
     await t.update(
       'tasks',
-      { claim_id: claim.id, task_type: { in: ['INTAKE_REVIEW', 'POLICY_CHECK'] }, status: { in: OPEN_TASK_STATUSES } },
+      { claim_id: claim.id, type: { in: ['INTAKE_REVIEW', 'POLICY_CHECK'] }, status: { in: OPEN_TASK_STATUSES } },
       { status: 'DONE', completed_at: new Date(), completed_by: actorId },
     )
   }

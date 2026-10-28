@@ -1,11 +1,11 @@
 import { z } from 'zod'
-import { DOCUMENT_CATEGORIES, EXTRACTABLE_CLAIM_FIELDS } from '../../../../shared/constants.js'
+import { DOCUMENT_TYPES, EXTRACTABLE_CLAIM_FIELDS } from '../../../../shared/constants.js'
 import { paginationSchema } from '../../utils/http.js'
 
 export const idParams = z.object({ id: z.string().uuid() })
 
 export const reminderDraftSchema = z.object({
-  categories: z.array(z.enum(DOCUMENT_CATEGORIES)).max(20).optional(),
+  categories: z.array(z.enum(DOCUMENT_TYPES)).max(20).optional(),
 })
 
 export const approveReminderSchema = z.object({

@@ -6,6 +6,7 @@ import { auditQuery, idParams } from './audit.validators.js'
 export function auditRoutes() {
   const router = Router()
   router.get('/audit-logs', validate({ query: auditQuery }), controller.list)
+  router.get('/audit-logs/verify', controller.verify)
   router.get('/claims/:id/audit', validate({ params: idParams }), controller.forClaim)
   return router
 }

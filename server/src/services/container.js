@@ -2,37 +2,38 @@ import { createDatabase } from '../db/index.js'
 import { createEmailService } from './email.service.js'
 import { createSimulatedPaymentAdapter } from './paymentAdapter.js'
 import { createAiProvider } from './ai.service.js'
-import { createLocalStorage, createSupabaseStorage } from './storage.service.js'
-import { createMockAuthProvider, createSupabaseAuthProvider } from './authProvider.js'
+import { createFieldCrypto, encryptLegacyFields } from './crypto.service.js'
+import { createDatabaseStorage } from './storage.service.js'
+import { createPasswordAuthProvider } from './authProvider.js'
 import { demoDataExists, ensureDemoUsers, seedDemoData } from '../seed/demoData.js'
 import { logger } from '../config/logger.js'
 
-/** Wires adapters for the configured mode. Mock mode is never selected implicitly. */
-export async function createDependencies(config, { seed = true } = {}) {
-  const db = await createDatabase(config)
+/** Wires the PostgreSQL database, sign-in, document storage and the other adapters. */
+export async function createDependencies(config, { seed = config.demoData } = {}) {
+  const db = await createDatabase(config, { log: (msg) => logger.info(`[migrate] ${msg}`) })
   const email = createEmailService(config)
   const payments = createSimulatedPaymentAdapter()
   const ai = createAiProvider(config)
+  const crypto = createFieldCrypto(config.fieldEncryptionKey)
+  const authProvider = createPasswordAuthProvider(config, db, email)
+  const storage = createDatabaseStorage(db)
 
-  let authProvider
-  let storage
-  if (config.DATA_MODE === 'supabase') {
-    authProvider = await createSupabaseAuthProvider(config)
-    storage = createSupabaseStorage(authProvider.admin, config.SUPABASE_STORAGE_BUCKET)
-  } else {
-    authProvider = createMockAuthProvider(config, db, email)
-    storage = createLocalStorage(config.mock.uploadsDir)
+  // Rows converted by the PRD migration (or imported from Supabase) may still hold plain text.
+  await encryptLegacyFields(db, crypto)
+
+  if (seed) {
     const seedOptions = {
       db,
       storage,
-      password: config.MOCK_DEMO_PASSWORD,
+      crypto,
+      password: config.DEMO_PASSWORD,
       createUser: (u) => authProvider.createUser(u),
-      log: (msg) => logger.info(`[mock seed] ${msg}`),
+      log: (msg) => logger.info(`[demo seed] ${msg}`),
     }
-    if (seed && !(await demoDataExists(db))) await seedDemoData(seedOptions)
+    if (!(await demoDataExists(db))) await seedDemoData(seedOptions)
     // Demo databases created before a new demo role was added get its account too.
-    else if (seed) await ensureDemoUsers(seedOptions)
+    else await ensureDemoUsers(seedOptions)
   }
 
-  return { config, db, email, payments, ai, authProvider, storage }
+  return { config, db, email, payments, ai, crypto, authProvider, storage }
 }

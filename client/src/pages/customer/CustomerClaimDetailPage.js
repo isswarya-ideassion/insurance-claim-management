@@ -18,7 +18,8 @@ import { TransitionActions } from '@/components/claims/TransitionActions.js'
 import { DocumentList, RequiredDocumentsChecklist } from '@/components/documents/DocumentList.js'
 import { UploadDocumentDialog } from '@/components/documents/DocumentDialogs.js'
 import { InformationRequestList } from '@/components/documents/InformationRequests.js'
-import { formatDateTime, formatMoney } from '@/utils/format.js'
+import { formatDateTime, formatMoney, formatLocation } from '@/utils/format.js'
+import { MaskedAmount } from '@/components/common/MaskedAmount.js'
 import { cn } from '@/lib/utils.js'
 
 const JOURNEY = [
@@ -54,7 +55,7 @@ export default function CustomerClaimDetailPage() {
   const [params, setParams] = useSearchParams()
   const query = useApiQuery(() => claimsService.get(id), [id])
   const docs = useApiQuery(() => documentsService.list(id), [id])
-  const requests = useApiQuery(() => documentsService.claimRequests(id), [id])
+  const requests = useApiQuery(() => documentsService.claimRequirements(id), [id])
   const timeline = useApiQuery(() => claimsService.timeline(id), [id])
   const payment = useApiQuery(() => paymentsService.claimStatus(id), [id])
   const [uploadOpen, setUploadOpen] = useState(false)
@@ -77,7 +78,7 @@ export default function CustomerClaimDetailPage() {
               <ClaimStatusBadge status={claim.status} customer label={claim.status_label} />
             </div>
             <p className="mt-1 text-sm text-muted-foreground">
-              {POLICY_TYPE_LABELS[claim.claim_type]} · {policy?.policy_number} · submitted {formatDateTime(claim.submitted_at)}
+              {POLICY_TYPE_LABELS[claim.claim_type]} · {policy?.external_policy_no} · submitted {formatDateTime(claim.opened_at)}
             </p>
           </div>
           <TransitionActions claimId={id} status={claim.status} version={claim.updated_at} onChanged={refresh} customer />
@@ -103,9 +104,9 @@ export default function CustomerClaimDetailPage() {
           <SectionCard title="Claim details">
             <KeyValue
               items={[
-                { label: 'Incident', value: `${humanize(claim.incident_category)} · ${formatDateTime(claim.incident_at)}` },
-                { label: 'Location', value: claim.incident_location },
-                { label: 'Description', value: claim.incident_description, wide: true },
+                { label: 'Incident', value: `${humanize(claim.loss_type)} · ${formatDateTime(claim.loss_date)}` },
+                { label: 'Location', value: formatLocation(claim) },
+                { label: 'Description', value: claim.loss_description, wide: true },
                 { label: 'Estimated loss', value: formatMoney(claim.estimated_loss) },
                 { label: 'Affected property / asset', value: claim.affected_asset },
                 { label: 'Insured name', value: claim.insured_name },
@@ -152,7 +153,7 @@ export default function CustomerClaimDetailPage() {
                     <KeyValue
                       columns={3}
                       items={[
-                        { label: 'Approved settlement', value: <span className="tabular text-lg font-semibold">{formatMoney(p.settlement.amount)}</span> },
+                        { label: 'Approved settlement', value: <MaskedAmount value={p.settlement.amount} label="settlement amount" className="text-lg font-semibold" /> },
                         { label: 'Approved on', value: formatDateTime(p.settlement.approvedAt) },
                         { label: 'Payment status', value: p.payment ? p.payment.statusLabel : 'Being prepared' },
                         p.payment && { label: 'Paying to', value: <span className="font-mono">{p.payment.beneficiaryAccount}</span> },

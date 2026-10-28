@@ -1,7 +1,10 @@
 import { ok, created } from '../../utils/http.js'
-import { isStaff } from '../../services/access.service.js'
+import { isStaff, loadAccessibleClaim, requireStaffView } from '../../services/access.service.js'
+import { claimClocks } from '../../services/sla.service.js'
 import { draftSchema, staffClaimUpdateSchema } from './claims.validators.js'
 import * as service from './claims.service.js'
+
+const STAFF_FIELDS = ['priority', 'dueDate', 'complexity']
 
 export async function list(req, res) {
   const { items, meta } = await service.listClaims(req.ctx, req.validatedQuery)
@@ -22,7 +25,7 @@ export async function detail(req, res) {
 
 export async function update(req, res) {
   // Staff-only metadata fields vs. claimant draft fields are validated separately.
-  const staffFields = isStaff(req.user) && ('priority' in req.body || 'dueDate' in req.body)
+  const staffFields = isStaff(req.user) && STAFF_FIELDS.some((f) => f in req.body)
   const body = staffFields ? staffClaimUpdateSchema.parse(req.body) : draftSchema.parse(req.body)
   ok(res, await service.updateClaim(req.ctx, req.params.id, body, staffFields ? 'staff' : 'draft'))
 }
@@ -45,8 +48,18 @@ export async function changeStatus(req, res) {
   ok(res, await service.changeStatus(req.ctx, req.params.id, req.body))
 }
 
-export async function verifyPolicy(req, res) {
-  ok(res, await service.verifyPolicy(req.ctx, req.params.id, req.body))
+export async function coverageCheck(req, res) {
+  ok(res, await service.verifyCoverage(req.ctx, req.params.id, req.body))
+}
+
+export async function coverageResults(req, res) {
+  ok(res, await service.listCoverageResults(req.ctx, req.params.id))
+}
+
+export async function slaClocks(req, res) {
+  const claim = await loadAccessibleClaim(req.ctx.db, req.ctx.actor, req.params.id)
+  requireStaffView(req.ctx.actor, claim)
+  ok(res, await claimClocks(req.ctx.db, claim.id))
 }
 
 export async function intakeChecklist(req, res) {

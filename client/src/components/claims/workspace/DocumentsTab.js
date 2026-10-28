@@ -16,7 +16,7 @@ export function DocumentsTab({ detail, reload }) {
   const { claim } = detail
   const { can } = useAuth()
   const docs = useApiQuery(() => documentsService.list(claim.id), [claim.id, claim.status])
-  const requests = useApiQuery(() => documentsService.claimRequests(claim.id), [claim.id, claim.status])
+  const requests = useApiQuery(() => documentsService.claimRequirements(claim.id), [claim.id, claim.status])
   const [uploadOpen, setUploadOpen] = useState(false)
   const [requestOpen, setRequestOpen] = useState(false)
   const canUpload = can('documents.upload') && UPLOAD_STATUSES.includes(claim.status)
@@ -48,7 +48,7 @@ export function DocumentsTab({ detail, reload }) {
         </div>
       </SectionCard>
       <SectionCard
-        title="Missing-document & information requests"
+        title="Required artifacts & requests"
         actions={
           canRequest && (
             <Button size="sm" variant="outline" onClick={() => setRequestOpen(true)}>

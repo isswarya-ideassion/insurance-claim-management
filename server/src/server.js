@@ -4,25 +4,34 @@ import { createDependencies } from './services/container.js'
 import { createApp } from './app.js'
 import { runOverdueSweep } from './modules/tasks/tasks.service.js'
 import { runDeadlineReminderSweep } from './modules/automation/reminders.service.js'
+import { runSlaSweep } from './services/sla.service.js'
 import { DEMO_DOMAIN } from './seed/demoData.js'
+
+/** Keeps monthly audit and AI-run partitions three months ahead (rows never land in the default partition). */
+async function ensurePartitions(deps) {
+  for (const table of ['audit_logs', 'ai_runs']) {
+    await deps.db.query('select public.create_monthly_partitions($1, current_date, 3)', [table])
+  }
+}
 
 async function main() {
   const config = loadConfig()
   const deps = await createDependencies(config)
   const app = createApp(deps)
+  await ensurePartitions(deps)
 
   const server = app.listen(config.PORT, () => {
     logger.info(`HarborPoint Claims API listening on http://localhost:${config.PORT}/api/v1`, {
-      mode: config.DATA_MODE,
       env: config.NODE_ENV,
+      demoData: config.demoData,
     })
-    if (config.isMock) {
+    if (config.demoData) {
       console.log(
         [
           '',
           '  ┌──────────────────────────────────────────────────────────────────┐',
-          '  │  MOCK MODE — local demo only. Embedded database, demo logins,    │',
-          '  │  local file storage, SIMULATED payments. Not for production.     │',
+          '  │  DEMO DATA — fictional users, policies and claims; SIMULATED     │',
+          '  │  payments. Never point SEED_DEMO_DATA=true at real data.         │',
           '  └──────────────────────────────────────────────────────────────────┘',
           `  Demo accounts: <role>.<name>@${DEMO_DOMAIN}  (see docs/SETUP.md)`,
           '',
@@ -36,6 +45,8 @@ async function main() {
     timer = setInterval(() => {
       runOverdueSweep(deps).catch((err) => logger.error('overdue sweep failed', { error: err.message }))
       runDeadlineReminderSweep(deps).catch((err) => logger.error('reminder sweep failed', { error: err.message }))
+      runSlaSweep(deps).catch((err) => logger.error('sla sweep failed', { error: err.message }))
+      ensurePartitions(deps).catch((err) => logger.error('partition maintenance failed', { error: err.message }))
     }, config.OVERDUE_SWEEP_MINUTES * 60_000)
     timer.unref()
   }

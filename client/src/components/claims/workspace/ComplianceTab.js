@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { AlertOctagon, CheckCircle2, Flag, Plus, Save, ShieldAlert, ShieldCheck, Trash2 } from 'lucide-react'
-import { COMPLIANCE_CHECKLIST, RISK_FLAG_CODES, humanize } from '@shared/constants.js'
+import { COMPLIANCE_CHECKLIST, FRAUD_REASON_CODES, FRAUD_SEVERITIES, humanize } from '@shared/constants.js'
 import { complianceService } from '@/services/workflowService.js'
 import { useApiQuery, useAction } from '@/hooks/useApi.js'
 import { useAuth } from '@/context/AuthContext.js'
@@ -84,13 +84,13 @@ function ReviewEditor({ review, onChanged }) {
         </div>
         <div className="space-y-4">
           <div>
-            <p className="text-sm font-medium">Risk flags & exceptions</p>
+            <p className="text-sm font-medium">Fraud & risk flags</p>
             <ul className="mt-2 space-y-2">
               {form.riskFlags.map((f, i) => (
                 <li key={i} className="space-y-2 rounded-lg border p-3">
                   <div className="grid grid-cols-[1fr_7rem_auto] gap-2">
-                    <Select aria-label="Flag" value={f.code} onValueChange={(code) => set('riskFlags', form.riskFlags.map((x, j) => (j === i ? { ...x, code } : x)))} options={RISK_FLAG_CODES.map((c) => ({ value: c, label: humanize(c) }))} />
-                    <Select aria-label="Severity" value={f.severity} onValueChange={(severity) => set('riskFlags', form.riskFlags.map((x, j) => (j === i ? { ...x, severity } : x)))} options={['LOW', 'MEDIUM', 'HIGH'].map((s) => ({ value: s, label: humanize(s) }))} />
+                    <Select aria-label="Flag" value={f.code} onValueChange={(code) => set('riskFlags', form.riskFlags.map((x, j) => (j === i ? { ...x, code } : x)))} options={FRAUD_REASON_CODES.map((c) => ({ value: c, label: humanize(c) }))} />
+                    <Select aria-label="Severity" value={f.severity} onValueChange={(severity) => set('riskFlags', form.riskFlags.map((x, j) => (j === i ? { ...x, severity } : x)))} options={FRAUD_SEVERITIES.map((s) => ({ value: s, label: humanize(s) }))} />
                     <Button size="icon" variant="ghost" aria-label="Remove flag" onClick={() => set('riskFlags', form.riskFlags.filter((_, j) => j !== i))}>
                       <Trash2 />
                     </Button>
@@ -189,6 +189,13 @@ export function ComplianceTab({ detail, reload }) {
         const history = rows.filter((r) => r !== open || !canReview)
         return (
           <div className="space-y-5">
+            {claim.fraud_band && (
+              <div className="flex flex-wrap items-center gap-3 rounded-xl border bg-card p-4 text-sm">
+                <Flag className="size-4 text-muted-foreground" aria-hidden="true" />
+                <span>Fraud risk: <strong>{humanize(claim.fraud_band)}</strong>{claim.fraud_score != null && <> · score <strong className="tabular">{claim.fraud_score}</strong>/100</>}</span>
+                <span className="text-xs text-muted-foreground">Recomputed from open, weighted fraud flags. Flags support review; they never decide a claim on their own.</span>
+              </div>
+            )}
             {canReview && open && <ReviewEditor review={open} onChanged={refresh} />}
             {canReview && !open && !['CLOSED', 'WITHDRAWN', 'DRAFT'].includes(claim.status) && (
               <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed bg-card p-6 text-center">

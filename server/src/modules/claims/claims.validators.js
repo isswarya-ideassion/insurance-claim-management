@@ -1,33 +1,48 @@
 import { z } from 'zod'
-import { ALL_STATUSES, POLICY_TYPES, PRIORITIES, INTAKE_CHECKLIST } from '../../../../shared/constants.js'
+import {
+  ALL_STATUSES,
+  COVERAGE_RESULTS,
+  INDIAN_MOBILE_MESSAGE,
+  INTAKE_CHECKLIST,
+  LIFECYCLE_STAGES,
+  POLICY_TYPES,
+  PRIORITIES,
+  SEGMENTS,
+  indianMobileDigits,
+} from '../../../../shared/constants.js'
 import { paginationSchema } from '../../utils/http.js'
+import { indianMobile } from '../../utils/phone.js'
 
 const optionalText = (max) => z.string().trim().max(max).optional().nullable()
 
+// A few minutes of tolerance for clock differences between the browser and the server.
+const FUTURE_TOLERANCE_MS = 5 * 60_000
+const notFuture = (d) => d == null || d.getTime() <= Date.now() + FUTURE_TOLERANCE_MS
+
 export const claimIdParams = z.object({ id: z.string().uuid('Invalid claim id') })
+
+// Optimistic locking: send the version you loaded; a stale version returns 409 VERSION_CONFLICT.
+const version = z.coerce.number().int().min(1).optional()
 
 export const draftSchema = z
   .object({
     policyNumber: z.string().trim().max(40).optional().nullable(),
     claimType: z.enum(POLICY_TYPES).optional().nullable(),
     insuredName: optionalText(120),
-    incidentAt: z.coerce.date().optional().nullable(),
-    incidentLocation: optionalText(250),
-    incidentCategory: optionalText(60),
-    incidentDescription: optionalText(5000),
+    lossDate: z.coerce.date().optional().nullable().refine(notFuture, 'The loss date and time cannot be in the future'),
+    lossLocation: optionalText(500),
+    lossCity: optionalText(100),
+    lossCountry: optionalText(100),
+    lossType: optionalText(60),
+    lossDescription: optionalText(5000),
     estimatedLoss: z.coerce.number().nonnegative().max(1e11).optional().nullable(),
     affectedAsset: optionalText(250),
     contactName: optionalText(120),
-    contactPhone: z
-      .string()
-      .trim()
-      .regex(/^\+?[0-9 ()-]{7,20}$/, 'Enter a valid phone number')
-      .optional()
-      .nullable()
-      .or(z.literal('').transform(() => null)),
+    contactPhone: z.literal('').transform(() => null).or(indianMobile).optional().nullable(),
     contactEmail: z.string().trim().email('Enter a valid email').optional().nullable().or(z.literal('').transform(() => null)),
     declarationAccepted: z.boolean().optional(),
     draftStep: z.coerce.number().int().min(1).max(6).optional(),
+    version,
   })
   .strict()
 
@@ -35,24 +50,28 @@ export const staffClaimUpdateSchema = z
   .object({
     priority: z.enum(PRIORITIES).optional(),
     dueDate: z.coerce.date().nullable().optional(),
+    complexity: z.coerce.number().int().min(1).max(4).nullable().optional(),
+    version,
   })
   .strict()
 
-/** Completeness rules applied at submission time. */
+/** Completeness rules applied at submission time (claim columns plus the claimant's contact details). */
 export const submissionReadySchema = z.object({
   policy_id: z.string().uuid({ message: 'Select a policy' }),
   claim_type: z.enum(POLICY_TYPES, { message: 'Claim type is required' }),
   insured_name: z.string({ message: 'Insured name is required' }).min(2, 'Insured name is required'),
-  incident_at: z.coerce.date({ message: 'Incident date and time are required' }),
-  incident_location: z.string({ message: 'Incident location is required' }).min(3, 'Incident location is required'),
-  incident_category: z.string({ message: 'Incident category is required' }).min(2),
-  incident_description: z
-    .string({ message: 'Incident description is required' })
-    .min(20, 'Describe the incident in at least 20 characters'),
+  loss_date: z.coerce.date({ message: 'Loss date and time are required' }),
+  loss_location: z.string({ message: 'Loss location is required' }).min(3, 'Loss location is required'),
+  loss_city: z.string({ message: 'City is required' }).trim().min(2, 'City is required'),
+  loss_country: z.string({ message: 'Country is required' }).trim().min(2, 'Country is required'),
+  loss_type: z.string({ message: 'Loss type is required' }).min(2),
+  loss_description: z
+    .string({ message: 'Loss description is required' })
+    .min(20, 'Describe the loss in at least 20 characters'),
   estimated_loss: z.coerce.number({ message: 'Estimated loss is required' }).positive('Estimated loss must be greater than zero'),
   affected_asset: z.string({ message: 'Affected property or asset is required' }).min(2),
   contact_name: z.string({ message: 'Contact name is required' }).min(2),
-  contact_phone: z.string({ message: 'Phone number is required' }).min(7),
+  contact_phone: z.string({ message: 'Phone number is required' }).refine((v) => indianMobileDigits(v) !== null, INDIAN_MOBILE_MESSAGE),
   contact_email: z.string({ message: 'Email is required' }).email(),
   declaration_accepted: z.literal(true, { message: 'You must accept the declaration and consent' }),
 })
@@ -72,6 +91,8 @@ const csv = (values) =>
 export const listClaimsQuery = paginationSchema.extend({
   search: z.string().trim().max(100).optional(),
   status: csv(ALL_STATUSES),
+  stage: csv(LIFECYCLE_STAGES),
+  segment: z.enum(SEGMENTS).optional(),
   claimType: csv(POLICY_TYPES),
   priority: csv(PRIORITIES),
   assigneeId: z.union([z.string().uuid(), z.literal('unassigned'), z.literal('me')]).optional(),
@@ -81,8 +102,8 @@ export const listClaimsQuery = paginationSchema.extend({
   from: z.coerce.date().optional(),
   to: z.coerce.date().optional(),
   sort: z
-    .enum(['submitted_at', 'created_at', 'updated_at', 'estimated_loss', 'due_date', 'claim_number', 'status', 'priority'])
-    .default('submitted_at'),
+    .enum(['opened_at', 'created_at', 'updated_at', 'estimated_loss', 'due_date', 'claim_number', 'status', 'priority', 'severity'])
+    .default('opened_at'),
   order: z.enum(['asc', 'desc']).default('desc'),
 })
 
@@ -92,9 +113,10 @@ export const transitionSchema = z.object({
   customerMessage: z.string().trim().max(1000).optional().nullable(),
 })
 
-export const verifyPolicySchema = z.object({
-  verified: z.boolean(),
+export const coverageSchema = z.object({
+  result: z.enum(COVERAGE_RESULTS),
   notes: z.string().trim().max(2000).optional().nullable(),
+  clauseRefs: z.array(z.string().trim().min(1).max(60)).max(20).optional(),
 })
 
 const checklistKeys = INTAKE_CHECKLIST.map((i) => i.key)

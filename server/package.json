@@ -10,12 +10,14 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "node scripts/check-syntax.js",
-    "provision:dev": "node scripts/provision-dev.js"
+    "db:migrate": "node scripts/db.js migrate",
+    "db:status": "node scripts/db.js status",
+    "db:seed-demo": "node scripts/db.js seed-demo",
+    "db:import-supabase": "node scripts/import-supabase.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",
-    "@electric-sql/pglite": "^0.5.8",
-    "@supabase/supabase-js": "~2.109.0",
+    "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
     "dotenv": "^17.2.0",
     "express": "^5.1.0",

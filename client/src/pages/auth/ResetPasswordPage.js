@@ -38,7 +38,7 @@ export default function ResetPasswordPage() {
     )
   }
 
-  if (authService.mode === 'mock' && !token) {
+  if (!token) {
     return (
       <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
         This reset link is missing its token. Request a new link from the sign-in page.

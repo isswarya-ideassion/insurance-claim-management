@@ -2,49 +2,48 @@ import { logger } from '../config/logger.js'
 
 export async function userIdsWithRole(t, roleCode) {
   const rows = await t.query(
-    `select ur.user_id from public.user_roles ur join public.profiles p on p.id = ur.user_id
-     where ur.role_code = $1 and p.is_active`,
+    `select ur.user_id from public.user_roles ur join public.users u on u.id = ur.user_id
+     where ur.role_code = $1 and u.is_active`,
     [roleCode],
   )
   return rows.map((r) => r.user_id)
 }
 
 /**
- * Creates in-app notification records inside the caller's transaction and,
- * after commit, hands them to the email adapter. email_status reflects what the
- * adapter actually reported (never SENT without provider confirmation).
+ * Creates one IN_APP notification per recipient inside the caller's
+ * transaction and, when email is requested, one EMAIL row that is handed to the
+ * email adapter after commit. EMAIL rows record what the adapter reported
+ * (never SENT without provider confirmation). Returns the IN_APP rows.
  */
 export async function notify(ctx, t, { recipientIds, claimId = null, type, title, message, link = null, email = true }) {
   const unique = [...new Set((recipientIds || []).filter(Boolean))]
   if (unique.length === 0) return []
-  const sendEmail = email && ctx.email.name !== 'disabled'
+  const now = new Date()
+  const base = (recipientId) => ({ recipient_id: recipientId, claim_id: claimId, template: type, title, message, link })
   const rows = await t.insert(
     'notifications',
-    unique.map((recipientId) => ({
-      recipient_id: recipientId,
-      claim_id: claimId,
-      type,
-      title,
-      message,
-      link,
-      email_status: sendEmail ? 'PENDING' : 'NOT_REQUESTED',
-    })),
+    unique.map((recipientId) => ({ ...base(recipientId), channel: 'IN_APP', status: 'DELIVERED', sent_at: now })),
   )
 
-  if (sendEmail) {
+  if (email && ctx.email.name !== 'disabled') {
+    const emailRows = await t.insert(
+      'notifications',
+      unique.map((recipientId) => ({ ...base(recipientId), channel: 'EMAIL', status: 'PENDING' })),
+    )
     t.afterCommit(async () => {
-      for (const row of rows) {
+      for (const row of emailRows) {
         try {
-          const profile = await ctx.db.findById('profiles', row.recipient_id)
-          if (!profile?.email) continue
-          const result = await ctx.email.send({ to: profile.email, subject: title, text: message })
+          const user = await ctx.db.findById('users', row.recipient_id)
+          if (!user?.email) continue
+          const result = await ctx.email.send({ to: user.email, subject: title, text: message })
           await ctx.db.updateById('notifications', row.id, {
-            email_status: result.status,
-            email_provider_message_id: result.providerMessageId || null,
+            status: result.status,
+            sent_at: new Date(),
+            provider_message_id: result.providerMessageId || null,
           })
         } catch (err) {
           logger.warn('email dispatch failed', { notificationId: row.id, error: err.message })
-          await ctx.db.updateById('notifications', row.id, { email_status: 'FAILED' }).catch(() => {})
+          await ctx.db.updateById('notifications', row.id, { status: 'FAILED' }).catch(() => {})
         }
       }
     })

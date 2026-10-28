@@ -10,15 +10,15 @@ export function PolicyTab({ detail }) {
   if (!policy) return <EmptyState title="No policy linked" />
   return (
     <div className="grid gap-5 lg:grid-cols-3">
-      <SectionCard title={`Policy ${policy.policy_number}`} className="lg:col-span-2" actions={<StatusBadge value={policy.status} />}>
+      <SectionCard title={`Policy ${policy.external_policy_no}`} className="lg:col-span-2" actions={<StatusBadge value={policy.status} />}>
         <KeyValue
           items={[
             { label: 'Policy type', value: POLICY_TYPE_LABELS[policy.policy_type] },
             { label: 'Insured', value: policy.insured_name },
             { label: 'Policyholder account', value: customer ? `${customer.full_name} (${customer.email})` : '—' },
             { label: 'Insured asset', value: policy.insured_asset },
-            { label: 'Effective from', value: formatDate(policy.effective_from) },
-            { label: 'Effective to', value: formatDate(policy.effective_to) },
+            { label: 'Effective from', value: formatDate(policy.effective_date) },
+            { label: 'Effective to', value: formatDate(policy.expiry_date) },
             { label: 'Sum insured', value: formatMoney(policy.sum_insured) },
             { label: 'Deductible', value: formatMoney(policy.deductible) },
             { label: 'Annual premium', value: formatMoney(policy.premium) },

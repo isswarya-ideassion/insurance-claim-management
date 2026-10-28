@@ -19,8 +19,8 @@ export default function ReconciliationPage() {
   const paymentRows = [
     { key: 'claim_number', header: 'Claim', cell: (p) => <Link to={`/payments/${p.id}`} className="font-medium text-primary hover:underline">{p.claim_number}</Link> },
     { key: 'amount', header: 'Amount', className: 'tabular', cell: (p) => formatMoney(p.amount) },
-    { key: 'transaction_reference', header: 'Reference', cell: (p) => p.transaction_reference || '—' },
-    { key: 'paid_at', header: 'Paid', cell: (p) => formatRelative(p.paid_at || p.updated_at) },
+    { key: 'portal_reference', header: 'Reference', cell: (p) => p.portal_reference || '—' },
+    { key: 'issued_at', header: 'Issued', cell: (p) => formatRelative(p.issued_at || p.updated_at) },
   ]
 
   return (

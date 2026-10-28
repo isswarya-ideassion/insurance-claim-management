@@ -13,7 +13,8 @@ import { ClaimTable } from '@/components/claims/ClaimTable.js'
 import { InformationRequestList } from '@/components/documents/InformationRequests.js'
 import { EmptyState } from '@/components/common/States.js'
 import { Button } from '@/components/ui/button.js'
-import { formatMoney } from '@/utils/format.js'
+import { MaskedAmount } from '@/components/common/MaskedAmount.js'
+import { CoverageIllustration } from '@/components/customer/CoverageIllustration.js'
 
 const ACTIVE = ['SUBMITTED', 'POLICY_VERIFICATION', 'DOCUMENTS_REQUIRED', 'DOCUMENT_REVIEW', 'ADJUSTER_ASSIGNMENT', 'INVESTIGATION', 'RESERVE_APPROVAL', 'COMPLIANCE_REVIEW', 'SETTLEMENT_APPROVAL', 'PAYMENT_PENDING', 'PAYMENT_FAILED', 'REOPENED']
 
@@ -21,7 +22,7 @@ export default function CustomerDashboard() {
   const { user } = useAuth()
   const claims = useApiQuery(() => claimsService.list({ pageSize: 50, sort: 'updated_at', order: 'desc' }), [])
   const policies = useApiQuery(() => policiesService.list({ pageSize: 50 }), [])
-  const requests = useApiQuery(() => documentsService.requests({ status: 'OPEN', pageSize: 5 }), [])
+  const requests = useApiQuery(() => documentsService.requests({ status: 'REQUESTED', pageSize: 5 }), [])
   const payments = useApiQuery(() => paymentsService.mine(), [])
 
   const rows = claims.data || []
@@ -32,16 +33,26 @@ export default function CustomerDashboard() {
 
   return (
     <MotionPage>
-      <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="mb-6 overflow-hidden rounded-2xl bg-sidebar p-6 text-white sm:p-8">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
+      <motion.div
+        initial={{ opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="relative mb-6 overflow-hidden rounded-2xl bg-gradient-to-br from-[#0b2140] via-sidebar to-[#0f3d4a] p-6 text-white sm:p-8"
+      >
+        <div className="relative z-10 grid items-center gap-6 md:grid-cols-[1fr_auto]">
+          <div className="max-w-xl">
             <p className="text-sm text-sidebar-muted">Welcome back</p>
-            <h1 className="mt-1 text-2xl font-semibold">{user.fullName || user.email}</h1>
-            <p className="mt-1 text-sm text-sidebar-foreground">Track your claims, respond to requests and follow your settlement.</p>
+            <h1 className="mt-1 text-2xl font-semibold text-balance sm:text-3xl">{user.fullName || user.email}</h1>
+            <p className="mt-2 text-sm text-sidebar-foreground">Your cover, claims and settlements in one place. Report a loss any time and follow every step until you are paid.</p>
+            <div className="mt-5 flex flex-wrap gap-2">
+              <Button asChild variant="accent" size="lg">
+                <Link to="/customer/claims/new"><FilePlus2 /> Start a new claim</Link>
+              </Button>
+              <Button asChild variant="outline" size="lg" className="border-white/25 bg-white/10 text-white hover:bg-white/20 hover:text-white">
+                <Link to="/customer/policies"><ShieldCheck /> My policies</Link>
+              </Button>
+            </div>
           </div>
-          <Button asChild variant="accent" size="lg">
-            <Link to="/customer/claims/new"><FilePlus2 /> Start a new claim</Link>
-          </Button>
+          <CoverageIllustration className="mx-auto w-full max-w-xs md:w-80" />
         </div>
       </motion.div>
 
@@ -56,7 +67,14 @@ export default function CustomerDashboard() {
         <KpiCard index={0} label="Active claims" value={claims.data ? active.length : null} icon={FileText} tone="navy" to="/customer/claims" />
         <KpiCard index={1} label="Open requests" value={requests.meta?.total} icon={Inbox} tone="amber" to="/customer/requests" />
         <KpiCard index={2} label="Policies" value={policies.meta?.total} icon={ShieldCheck} tone="teal" to="/customer/policies" />
-        <KpiCard index={3} label="Settlements paid" value={payments.data ? formatMoney(paidTotal) : null} icon={Wallet} tone="green" to="/customer/payments" />
+        <KpiCard
+          index={3}
+          label="Settlements paid"
+          value={payments.data ? <MaskedAmount value={paidTotal} label="total settlements paid" /> : null}
+          icon={Wallet}
+          tone="green"
+          hint={<Link to="/customer/payments" className="font-medium text-accent hover:underline">View payments</Link>}
+        />
       </div>
 
       {drafts.length > 0 && (
@@ -80,7 +98,7 @@ export default function CustomerDashboard() {
             loading={claims.loading}
             error={claims.error}
             onRetry={claims.reload}
-            hideColumns={['incident_category']}
+            hideColumns={['loss_type']}
             empty={<EmptyState icon={FileText} title="No claims yet" description="When you submit a claim it will appear here." action={<Button asChild size="sm"><Link to="/customer/claims/new">Start a claim</Link></Button>} />}
           />
         </SectionCard>

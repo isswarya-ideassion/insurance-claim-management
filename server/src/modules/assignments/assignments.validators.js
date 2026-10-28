@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { ASSIGNMENT_ROLES } from '../../../../shared/constants.js'
+import { ASSIGNMENT_ROLES, STAFF_ROLES } from '../../../../shared/constants.js'
 
 export const claimParams = z.object({ id: z.string().uuid() })
 
@@ -10,5 +10,5 @@ export const assignSchema = z.object({
 })
 
 export const assigneesQuery = z.object({
-  role: z.enum(['CLAIMS_OPERATIONS', 'DOCUMENT_REVIEWER', 'CLAIMS_ADJUSTER', 'CLAIMS_MANAGER', 'COMPLIANCE_OFFICER', 'PAYMENT_OPERATIONS']),
+  role: z.enum(STAFF_ROLES),
 })

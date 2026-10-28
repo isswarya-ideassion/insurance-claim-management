@@ -6,12 +6,18 @@ import { NAVIGATION, ROLE_HOME, ROUTE_ROLES } from '@/constants/navigation.js'
 const PATH_GUARD = [
   [/^\/customer(\/|$)/, 'customer'],
   [/^\/operations$/, 'operations'],
+  [/^\/policy-renewals$/, 'renewals'],
   [/^\/claims/, 'claims'],
   [/^\/tasks$/, 'tasks'],
   [/^\/document-review$/, 'documentReview'],
   [/^\/adjuster$/, 'adjuster'],
   [/^\/manager\/decisions$/, 'decisions'],
+  [/^\/manager\/reserves$/, 'reserves'],
+  [/^\/manager\/unassigned$/, 'unassigned'],
   [/^\/manager/, 'manager'],
+  [/^\/settlements$/, 'settlements'],
+  [/^\/config$/, 'config'],
+  [/^\/integrations$/, 'integrations'],
   [/^\/compliance$/, 'compliance'],
   [/^\/payments/, 'payments'],
   [/^\/reports$/, 'reports'],
@@ -56,15 +62,36 @@ describe('role-based navigation', () => {
     }
   })
 
-  it('limits customer records to the designated role', () => {
-    expect(ROUTE_ROLES.customerRecords).toEqual(['CUSTOMER_RECORDS_ADMIN'])
-    expect(NAVIGATION.CUSTOMER_RECORDS_ADMIN.map((i) => i.to)).toEqual(['/customer-records'])
+  it('uses the seven PRD roles plus the Claims Operations Manager', () => {
+    expect(ALL_ROLES).toEqual(['CLIENT', 'CLAIMS_OPS_MANAGER', 'OPS_MANAGER', 'ADJUSTER', 'DOCUMENT_REVIEWER', 'PAYMENT_OPERATOR', 'DATA_ENGINEER', 'COMPLIANCE_SECURITY'])
   })
 
-  it('keeps customers out of staff areas and staff out of the customer portal', () => {
-    expect(ROUTE_ROLES.claims).not.toContain('CUSTOMER')
-    expect(ROUTE_ROLES.admin).toEqual(['DATA_ADMIN'])
-    expect(ROUTE_ROLES.customer).toEqual(['CUSTOMER'])
-    expect(NAVIGATION.CUSTOMER.every((i) => i.to.startsWith('/customer') || i.to === '/notifications')).toBe(true)
+  it('sends the Claims Operations Manager to intake work and keeps approval screens with the Claims Manager', () => {
+    expect(ROLE_HOME.CLAIMS_OPS_MANAGER).toBe('/operations')
+    expect(ROLE_HOME.OPS_MANAGER).toBe('/manager')
+    for (const key of ['reserves', 'settlements', 'decisions', 'manager', 'compliance', 'payments']) {
+      expect(ROUTE_ROLES[key], key).not.toContain('CLAIMS_OPS_MANAGER')
+    }
+    expect(ROUTE_ROLES.unassigned).toEqual(expect.arrayContaining(['CLAIMS_OPS_MANAGER', 'OPS_MANAGER']))
+  })
+
+  it('limits customer records and user administration to Compliance & Security', () => {
+    expect(ROUTE_ROLES.customerRecords).toEqual(['COMPLIANCE_SECURITY'])
+    expect(ROUTE_ROLES.admin).toEqual(['COMPLIANCE_SECURITY'])
+  })
+
+  it('keeps clients out of staff areas and staff out of the client portal', () => {
+    for (const key of Object.keys(ROUTE_ROLES).filter((k) => k !== 'customer')) {
+      expect(ROUTE_ROLES[key], key).not.toContain('CLIENT')
+    }
+    expect(ROUTE_ROLES.customer).toEqual(['CLIENT'])
+    expect(NAVIGATION.CLIENT.every((i) => i.to.startsWith('/customer'))).toBe(true)
+  })
+
+  it('routes settlement approvals to Adjusters and Claims Managers, reserve reviews to Claims Managers', () => {
+    expect(ROUTE_ROLES.settlements).toEqual(expect.arrayContaining(['ADJUSTER', 'OPS_MANAGER']))
+    expect(ROUTE_ROLES.settlements).not.toContain('PAYMENT_OPERATOR')
+    expect(ROUTE_ROLES.reserves).not.toContain('PAYMENT_OPERATOR')
+    expect(ROUTE_ROLES.reserves).not.toContain('ADJUSTER')
   })
 })

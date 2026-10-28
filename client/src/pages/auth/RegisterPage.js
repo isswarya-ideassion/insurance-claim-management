@@ -1,3 +1,4 @@
+import { PRIVACY_NOTICE_VERSION, normalizeIndianMobile } from '@shared/constants.js'
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Controller, useForm } from 'react-hook-form'
@@ -11,6 +12,7 @@ import { FormField } from '@/components/common/FormField.js'
 import { Button } from '@/components/ui/button.js'
 import { Input, Label } from '@/components/ui/input.js'
 import { Checkbox } from '@/components/ui/misc.js'
+import { PhoneInput } from '@/components/common/PhoneInput.js'
 
 export default function RegisterPage() {
   const navigate = useNavigate()
@@ -23,7 +25,7 @@ export default function RegisterPage() {
 
   async function onSubmit(values) {
     try {
-      const result = await authService.signUp({ email: values.email, password: values.password, fullName: values.fullName, phone: values.phone || undefined })
+      const result = await authService.signUp({ email: values.email, password: values.password, fullName: values.fullName, phone: normalizeIndianMobile(values.phone) || undefined, acceptPrivacyNotice: values.terms })
       if (result.needsConfirmation) {
         setConfirmationSent(true)
         return
@@ -42,7 +44,7 @@ export default function RegisterPage() {
       <div className="text-center">
         <CheckCircle2 className="mx-auto size-10 text-accent" aria-hidden="true" />
         <h1 className="mt-3 text-xl font-semibold">Check your email</h1>
-        <p className="mt-2 text-sm text-muted-foreground">Confirm your address using the link from Supabase Auth, then sign in.</p>
+        <p className="mt-2 text-sm text-muted-foreground">Confirm your address using the link we emailed you, then sign in.</p>
         <Button asChild variant="outline" className="mt-6">
           <Link to="/login">Back to sign in</Link>
         </Button>
@@ -62,8 +64,8 @@ export default function RegisterPage() {
           <FormField label="Email" error={formState.errors.email?.message} required>
             <Input type="email" autoComplete="email" {...register('email')} />
           </FormField>
-          <FormField label="Phone" error={formState.errors.phone?.message}>
-            <Input type="tel" autoComplete="tel" {...register('phone')} />
+          <FormField label="Mobile number" hint="Optional. 10-digit Indian mobile number." error={formState.errors.phone?.message}>
+            <PhoneInput {...register('phone')} />
           </FormField>
         </div>
         <FormField label="Password" error={formState.errors.password?.message} hint="10+ characters with upper, lower case and a number" required>
@@ -80,7 +82,7 @@ export default function RegisterPage() {
               render={({ field }) => <Checkbox id="terms" checked={field.value} onCheckedChange={(v) => field.onChange(v === true)} className="mt-0.5" />}
             />
             <Label htmlFor="terms" className="text-sm font-normal leading-snug text-muted-foreground">
-              I agree to the terms of use and consent to HarborPoint processing my data to manage claims.
+              I have read the privacy notice (version {PRIVACY_NOTICE_VERSION}) and consent to HarborPoint processing my personal data to manage my policies and claims.
             </Label>
           </div>
           {formState.errors.terms && <p className="mt-1 text-xs font-medium text-destructive">{formState.errors.terms.message}</p>}

@@ -1,4 +1,4 @@
-import { ok } from '../../utils/http.js'
+import { ok, created } from '../../utils/http.js'
 import * as service from './reserves.service.js'
 
 export async function listForClaim(req, res) {
@@ -10,6 +10,10 @@ export async function queue(req, res) {
   ok(res, items, meta)
 }
 
-export async function decide(req, res) {
-  ok(res, await service.decideReserve(req.ctx, req.params.id, req.body))
+export async function review(req, res) {
+  ok(res, await service.reviewReserve(req.ctx, req.params.id, req.body))
+}
+
+export async function revise(req, res) {
+  created(res, await service.reviseReserve(req.ctx, req.params.id, req.body))
 }

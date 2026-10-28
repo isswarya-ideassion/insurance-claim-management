@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Eye, FileSearch, UserCheck } from 'lucide-react'
-import { DOCUMENT_CATEGORIES, humanize } from '@shared/constants.js'
+import { DOCUMENT_TYPES, humanize } from '@shared/constants.js'
 import { documentsService } from '@/services/documentsService.js'
 import { useApiQuery, useAction } from '@/hooks/useApi.js'
 import { useListParams } from '@/hooks/useListParams.js'
@@ -33,7 +33,7 @@ export default function ReviewQueuePage() {
       cell: (d) => (
         <div className="min-w-[12rem]">
           <p className="font-medium">{d.file_name}</p>
-          <p className="text-xs text-muted-foreground">{humanize(d.category)} · v{d.version_no}</p>
+          <p className="text-xs text-muted-foreground">{humanize(d.doc_type)} · v{d.version}</p>
         </div>
       ),
     },
@@ -51,7 +51,7 @@ export default function ReviewQueuePage() {
     { key: 'claim_priority', header: 'Priority', cell: (d) => <PriorityBadge value={d.claim_priority} /> },
     { key: 'reviewer_name', header: 'Reviewer', cell: (d) => d.reviewer_name || <span className="text-muted-foreground">Unassigned</span> },
     pending
-      ? { key: 'uploaded_at', header: 'Waiting', cell: (d) => <span title={formatDateTime(d.uploaded_at)}>{formatRelative(d.uploaded_at)}</span> }
+      ? { key: 'received_at', header: 'Waiting', cell: (d) => <span title={formatDateTime(d.received_at)}>{formatRelative(d.received_at)}</span> }
       : { key: 'reviewed_at', header: 'Reviewed', cell: (d) => `${formatDateTime(d.reviewed_at)} · ${d.reviewed_by_name || ''}` },
     !pending && { key: 'status', header: 'Decision', cell: (d) => <StatusBadge value={d.status} /> },
     {
@@ -86,7 +86,7 @@ export default function ReviewQueuePage() {
             <Select aria-label="Queue" value={params.status} onValueChange={(status) => setParams({ status })} options={[{ value: 'PENDING_REVIEW', label: 'Awaiting review' }, { value: 'ACCEPTED', label: 'Accepted' }, { value: 'REJECTED', label: 'Rejected' }]} />
           </div>
           <div className="w-52">
-            <Select aria-label="Category" allowClear placeholder="All categories" value={params.category || ''} onValueChange={(category) => setParams({ category })} options={DOCUMENT_CATEGORIES.map((c) => ({ value: c, label: humanize(c) }))} />
+            <Select aria-label="Document type" allowClear placeholder="All document types" value={params.docType || ''} onValueChange={(docType) => setParams({ docType })} options={DOCUMENT_TYPES.map((c) => ({ value: c, label: humanize(c) }))} />
           </div>
           <label className="flex items-center gap-2 text-sm">
             <Switch checked={params.mine === 'true'} onCheckedChange={(v) => setParams({ mine: v ? 'true' : '' })} aria-label="Assigned to me" />

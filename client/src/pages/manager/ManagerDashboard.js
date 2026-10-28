@@ -13,14 +13,14 @@ import { ChartCard, SimpleBarChart, rowsHeight } from '@/components/dashboard/Ch
 import { Button } from '@/components/ui/button.js'
 import { Badge } from '@/components/ui/badge.js'
 import { useAuth } from '@/context/AuthContext.js'
-import { formatMoney } from '@/utils/format.js'
+import { formatAuthority, formatMoney } from '@/utils/format.js'
 
 export default function ManagerDashboard() {
   const { user } = useAuth()
   const stats = useApiQuery(() => claimsService.stats(), [])
   const workload = useApiQuery(() => claimsService.workload(), [])
   const reserves = useApiQuery(() => approvalsService.reserveQueue({ pageSize: 1 }), [])
-  const settlements = useApiQuery(() => approvalsService.settlementQueue({ pageSize: 1 }), [])
+  const settlements = useApiQuery(() => approvalsService.settlementQueue({ pageSize: 1, awaitingMe: 'true' }), [])
   const unassigned = useApiQuery(() => claimsService.list({ needsAdjuster: 'true', pageSize: 1 }), [])
   const s = stats.data
 
@@ -28,18 +28,18 @@ export default function ManagerDashboard() {
     <MotionPage>
       <PageHeader
         title="Team workload"
-        description={`Your approval limit: ${user.approvalLimit != null ? formatMoney(user.approvalLimit) : 'not set'}.`}
+        description={`Reserve authority: ${formatAuthority(user.limits, 'reserve')}. Settlement authority: ${formatAuthority(user.limits, 'settlement')}.`}
         actions={
           <>
-            <Button variant="outline" asChild><Link to="/manager/reserves">Reserve queue</Link></Button>
-            <Button asChild><Link to="/manager/settlements">Settlement queue</Link></Button>
+            <Button variant="outline" asChild><Link to="/manager/reserves">Reserve reviews</Link></Button>
+            <Button asChild><Link to="/settlements">Settlement approvals</Link></Button>
           </>
         }
       />
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <KpiCard index={0} label="Need adjuster" value={unassigned.meta?.total} icon={UserX} tone="amber" to="/manager/unassigned" />
         <KpiCard index={1} label="Reserve approvals" value={reserves.meta?.total} icon={Scale} tone="navy" to="/manager/reserves" />
-        <KpiCard index={2} label="Settlement approvals" value={settlements.meta?.total} icon={Gavel} tone="navy" to="/manager/settlements" />
+        <KpiCard index={2} label="Settlements above adjuster limit" value={settlements.meta?.total} icon={Gavel} tone="navy" to="/settlements" />
         <KpiCard index={3} label="On hold / in compliance" value={s ? s.onHold + s.inCompliance : null} icon={ShieldAlert} tone="red" to="/compliance" />
         <KpiCard index={4} label="Overdue tasks" value={s?.overdueTasks} icon={AlarmClock} tone="red" to="/tasks?view=team&overdue=true" />
       </div>

@@ -6,13 +6,21 @@ pg.types.setTypeParser(1700, (v) => (v === null ? null : Number(v)))
 pg.types.setTypeParser(1082, (v) => v)
 pg.types.setTypeParser(20, (v) => (v === null ? null : Number(v)))
 
-export function createPgExecutor({ connectionString, ssl }) {
+const SSL = {
+  disable: false,
+  require: { rejectUnauthorized: false },
+  'verify-full': { rejectUnauthorized: true },
+}
+
+export function createPgExecutor({ connectionString, ssl = 'disable', max = 10 }) {
   const pool = new pg.Pool({
     connectionString,
-    ssl: ssl ? { rejectUnauthorized: false } : false,
-    max: 10,
+    ssl: SSL[ssl] ?? false,
+    max,
     idleTimeoutMillis: 30_000,
   })
+  // An idle client losing its connection must not crash the process.
+  pool.on('error', () => {})
 
   return {
     kind: 'postgres',

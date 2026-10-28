@@ -17,7 +17,7 @@ export default function TasksPage() {
   const { params, setParams } = useListParams({ view: 'mine', status: 'OPEN,IN_PROGRESS' })
   const query = useApiQuery(() => tasksService.list(params), [JSON.stringify(params)])
   const [open, setOpen] = useState(false)
-  const teamAllowed = hasRole('CLAIMS_OPERATIONS', 'CLAIMS_MANAGER', 'AUDITOR')
+  const teamAllowed = hasRole('CLAIMS_OPS_MANAGER', 'OPS_MANAGER', 'COMPLIANCE_SECURITY')
 
   return (
     <MotionPage>

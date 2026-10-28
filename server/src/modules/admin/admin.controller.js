@@ -33,3 +33,7 @@ export async function overdueSweep(req, res) {
 export async function system(req, res) {
   ok(res, service.systemInfo(req.ctx))
 }
+
+export async function updateAttributes(req, res) {
+  ok(res, await service.updateAttributes(req.ctx, req.params.id, req.body))
+}

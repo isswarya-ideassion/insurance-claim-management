@@ -10,3 +10,7 @@ export async function forClaim(req, res) {
   const { items, meta } = await service.claimAuditTrail(req.ctx, req.params.id)
   ok(res, items, meta)
 }
+
+export async function verify(req, res) {
+  ok(res, await service.verifyChain(req.ctx))
+}

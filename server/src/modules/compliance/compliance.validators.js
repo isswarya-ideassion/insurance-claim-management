@@ -1,12 +1,13 @@
 import { z } from 'zod'
-import { COMPLIANCE_CHECKLIST, RISK_FLAG_CODES, COMPLIANCE_STATUSES } from '../../../../shared/constants.js'
+import { COMPLIANCE_CHECKLIST, FRAUD_REASON_CODES, FRAUD_SEVERITIES, COMPLIANCE_STATUSES } from '../../../../shared/constants.js'
 import { paginationSchema } from '../../utils/http.js'
 
 export const idParams = z.object({ id: z.string().uuid() })
 
 const riskFlag = z.object({
-  code: z.enum(RISK_FLAG_CODES),
-  severity: z.enum(['LOW', 'MEDIUM', 'HIGH']),
+  id: z.string().uuid().optional(),
+  code: z.enum(FRAUD_REASON_CODES),
+  severity: z.enum(FRAUD_SEVERITIES),
   note: z.string().trim().max(1000).optional().nullable(),
   resolved: z.boolean().default(false),
 })

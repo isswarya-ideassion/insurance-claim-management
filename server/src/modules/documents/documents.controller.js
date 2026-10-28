@@ -12,7 +12,7 @@ export async function upload(req, res) {
 }
 
 export async function download(req, res) {
-  const { doc, buffer } = await service.downloadDocument(req.ctx, req.params.id)
+  const { doc, buffer } = await service.downloadDocument(req.ctx, req.params.id, req.validatedQuery.version)
   const disposition = req.validatedQuery.disposition
   res.set({
     'Content-Type': doc.mime_type,
@@ -42,17 +42,17 @@ export async function assignReviewer(req, res) {
   ok(res, await service.assignReviewer(req.ctx, req.params.id, req.body))
 }
 
-export async function listClaimRequests(req, res) {
-  ok(res, await service.listClaimRequests(req.ctx, req.params.id))
+export async function listClaimRequirements(req, res) {
+  ok(res, await service.listClaimRequirements(req.ctx, req.params.id))
 }
 
 export async function listRequests(req, res) {
-  const { items, meta } = await service.listMyRequests(req.ctx, req.validatedQuery)
+  const { items, meta } = await service.listRequests(req.ctx, req.validatedQuery)
   ok(res, items, meta)
 }
 
 export async function createRequest(req, res) {
-  created(res, await service.createInformationRequest(req.ctx, req.params.id, req.body))
+  created(res, await service.createArtifactRequest(req.ctx, req.params.id, req.body))
 }
 
 export async function respond(req, res) {
