@@ -318,6 +318,26 @@ AI endpoints return `503 AI_NOT_CONFIGURED` with `details.setup` (instructions) 
 | GET | `/claims/:id/automation/summary` | `automation.view` | `{ facts, ai, disclaimer, aiStatus }` — `facts` comes from the database; `ai` is the latest stored summary (with `stale`) or `null` |
 | POST | `/claims/:id/automation/summary` | `automation.summarize` | Generates a new AI summary |
 
+### Claim agents (PRD section 3)
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/claims/:id/agents/:agent` | The last five runs `{ runs, configured, disclaimer }`. Needs the agent's claim tab and a role that may run or apply it (Claims Managers and Compliance & Security may always view) |
+| POST | `/claims/:id/agents/:agent` | Runs the agent (201) → `{ run, disclaimer }`. 503 `AI_NOT_CONFIGURED` without a provider; 502 `AI_INVALID_OUTPUT` / `AI_POLICY_VIOLATION` record a failed run |
+| POST | `/agent-runs/:id/apply` | Applies the suggestion (body per agent, below). 409 `ALREADY_REVIEWED` once decided |
+| POST | `/agent-runs/:id/discard` | `{ reason? }` → `human_decision: REJECTED` |
+
+| Agent (`:agent`) | Claim tab | Runs it | Applies the suggestion | What applying does |
+|---|---|---|---|---|
+| `coverage-checker` | Policy & Coverage | Claims Operations Manager | Claims Operations Manager (`claims.verifyCoverage`) | Records the coverage result (optionally overridden) with the cited clause IDs; `coverage_results.ai_run_ref` points to the run. Intake statuses only |
+| `triage-router` | Overview | Claims Operations Manager, Claims Manager | In parts: `classification` (severity, complexity; `claims.updateMeta`), `adjuster` (`claims.assignAdjuster`), `fraud_flags` (`compliance.review`) | Updates the claim, assigns the adjuster (a claim at Triage moves to Investigation), records fraud flags with `ai_run_ref`. The fraud score and reasons are shown only to Claims Managers and Compliance & Security; others see the band |
+| `reserve-recommender` | Reserves | Assigned adjuster (Investigation) | Assigned adjuster (`reserves.set`) | `{ coverageLine, amount, overrideReason? }`. Sets the reserve with reason `AI_RECOMMENDATION_ACCEPTED`; a different amount needs `overrideReason` and is recorded as `REVISED_ESTIMATE`. Above authority it goes to manager review as usual |
+| `denial-letter-drafter` | Evaluation | Adjuster, Claims Manager | Claims Manager (`ai.denialLetterApprove`) | `{ subject, body }` (edited). Only when the evaluation recommends denial or coverage is NOT_COVERED. Saves a PDF `DENIAL_LETTER` document and links it from the evaluation. Does not deny the claim |
+| `payee-anomaly` | Approvals | Claims Operations Manager, Adjuster, Claims Manager, Payment Operator | Same roles | `{ createTask, message? }`. Marks reviewed, or creates a task for the Payment Operator queue. Never changes the payment |
+| `subrogation-assessor` | Closure & Recovery | Adjuster, Claims Manager | Adjuster (assigned), Claims Manager (`recoveries.write`) | `{ type, targetParty?, description?, expectedAmount?, deadline? }`. Creates a recovery with `ai_run_ref`; the expected amount cannot exceed what was paid |
+
+Every run is stored in `ai_runs` (`agent`, `prompt_version`, `input_hash`, `confidence`, `needs_human`, `human_decision`, `applied_fields`) and audited as `AI_AGENT_COMPLETED` under the agent identity; applying is audited as `AI_SUGGESTION_APPLIED` under the person. Inputs are minimized: no contact details, account numbers (only the last four digits and system-computed equality signals) or, for triage, protected attributes. Output is validated against a schema; unknown clause IDs, reason codes, anomaly codes and adjusters are removed, and payee output that concludes fraud or advises releasing or blocking a payment is discarded.
+
 Extraction field (one per entry in `result.fields`):
 
 ```json

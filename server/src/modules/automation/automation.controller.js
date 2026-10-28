@@ -1,6 +1,7 @@
 import { ok, created } from '../../utils/http.js'
 import * as reminders from './reminders.service.js'
 import * as ai from './ai-automation.service.js'
+import * as agents from './agents.service.js'
 
 export async function status(req, res) {
   ok(res, ai.getAiStatus(req.ctx))
@@ -57,4 +58,20 @@ export async function getSummary(req, res) {
 
 export async function generateSummary(req, res) {
   created(res, await ai.generateSummary(req.ctx, req.params.id))
+}
+
+export async function listAgentRuns(req, res) {
+  ok(res, await agents.listAgentRuns(req.ctx, req.params.id, req.params.agent))
+}
+
+export async function runAgent(req, res) {
+  created(res, await agents.runAgent(req.ctx, req.params.id, req.params.agent))
+}
+
+export async function applyAgentRun(req, res) {
+  ok(res, await agents.applyAgentRun(req.ctx, req.params.id, req.body))
+}
+
+export async function discardAgentRun(req, res) {
+  ok(res, await agents.discardAgentRun(req.ctx, req.params.id, req.body))
 }

@@ -14,6 +14,7 @@ import { Input, Textarea } from '@/components/ui/input.js'
 import { Select } from '@/components/ui/select.js'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog.js'
 import { formatDate, formatDateTime, formatMoney, todayInput } from '@/utils/format.js'
+import { SubrogationAgentCard } from '@/components/automation/AgentPanels.js'
 
 // Mirrors the server rule: closure can be requested once the claim is paid or denied.
 const CLOSABLE_STATUSES = ['PAID', 'REJECTED']
@@ -218,6 +219,7 @@ export function RecoveryTab({ detail, reload }) {
         onConfirm={async (comment) => Boolean(await action.run(async () => { await closureService.decide(deciding.request.id, { decision: deciding.decision, comment: comment || undefined }); await refresh() }, { success: deciding?.decision === 'APPROVED' ? 'Claim closed' : 'Closure request rejected' }))}
       />
       <RecoveryDialog open={Boolean(recoveryDialog)} onOpenChange={(o) => !o && setRecoveryDialog(null)} claimId={claim.id} recovery={recoveryDialog?.recovery} onSaved={refresh} />
+      <SubrogationAgentCard claim={claim} onApplied={refresh} />
     </div>
   )
 }

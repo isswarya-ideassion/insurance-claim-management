@@ -23,4 +23,9 @@ export const automationService = {
   discardExtraction: (runId) => api.post(`/automation/extractions/${runId}/discard`).then((r) => r.data),
   summary: (claimId) => api.get(`/claims/${claimId}/automation/summary`).then((r) => r.data),
   generateSummary: (claimId) => api.post(`/claims/${claimId}/automation/summary`).then((r) => r.data),
+  // Claim agents (coverage, triage, reserve, denial letter, payee, subrogation)
+  agentRuns: (claimId, agent) => api.get(`/claims/${claimId}/agents/${agent}`).then((r) => r.data),
+  runAgent: (claimId, agent) => api.post(`/claims/${claimId}/agents/${agent}`).then((r) => r.data),
+  applyAgentRun: (runId, body) => api.post(`/agent-runs/${runId}/apply`, body).then((r) => r.data),
+  discardAgentRun: (runId, reason) => api.post(`/agent-runs/${runId}/discard`, reason ? { reason } : {}).then((r) => r.data),
 }

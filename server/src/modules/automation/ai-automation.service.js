@@ -30,12 +30,18 @@ export const AI_DISCLAIMER =
 export const PROMPT_VERSIONS = {
   [AI_AGENTS.INTAKE_PARSER]: 'intake-parser/2026-10-22',
   [AI_AGENTS.CLAIM_SUMMARIZER]: 'claim-summarizer/2026-10-22',
+  [AI_AGENTS.COVERAGE_CHECKER]: 'coverage-checker/2026-10-28',
+  [AI_AGENTS.TRIAGE_ROUTER]: 'triage-router/2026-10-28',
+  [AI_AGENTS.RESERVE_RECOMMENDER]: 'reserve-recommender/2026-10-28',
+  [AI_AGENTS.DENIAL_DRAFTER]: 'denial-letter-drafter/2026-10-28',
+  [AI_AGENTS.PAYEE_ANOMALY]: 'payee-anomaly/2026-10-28',
+  [AI_AGENTS.SUBROGATION_ASSESSOR]: 'subrogation-assessor/2026-10-28',
 }
 
-const sha256 = (text) => createHash('sha256').update(text).digest('hex')
+export const sha256 = (text) => createHash('sha256').update(text).digest('hex')
 
 /** Agent actions are audited under the agent service identity, with the requesting user in metadata. */
-const agentActor = (ctx) => ({ id: null, type: 'AGENT', roles: ['svc-agent'], requestId: ctx.actor.requestId, ip: ctx.actor.ip })
+export const agentActor = (ctx) => ({ id: null, type: 'AGENT', roles: ['svc-agent'], requestId: ctx.actor.requestId, ip: ctx.actor.ip })
 
 export function getAiStatus(ctx) {
   requirePermission(ctx.actor, 'automation.view')
@@ -53,7 +59,7 @@ async function loadAutomationClaim(t, ctx, claimId) {
  * prompt version, model and input hash, and logs only metadata — never
  * prompts, document contents or extracted values.
  */
-async function runAi(ctx, { agent, claimId, documentId = null, inputHash, request, validate }) {
+export async function runAi(ctx, { agent, claimId, documentId = null, inputHash, request, validate }) {
   if (!ctx.ai.configured) throw aiNotConfigured()
   const started = Date.now()
   const base = {
@@ -91,7 +97,7 @@ async function runAi(ctx, { agent, claimId, documentId = null, inputHash, reques
   }
 }
 
-function logRun(ctx, run) {
+export function logRun(ctx, run) {
   logger.info('ai run', {
     runId: run.id,
     agent: run.agent,
@@ -321,7 +327,7 @@ export async function runExtraction(ctx, documentId) {
 
 const REVIEW_STATUS = { PENDING: 'PENDING_REVIEW', ACCEPTED: 'APPLIED', REJECTED: 'DISCARDED', NOT_REQUIRED: 'NOT_APPLICABLE' }
 
-function presentRun(run, names) {
+export function presentRun(run, names) {
   return {
     id: run.id,
     agent: run.agent,

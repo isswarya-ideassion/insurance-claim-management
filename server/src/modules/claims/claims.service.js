@@ -533,7 +533,7 @@ export async function changeStatus(ctx, id, { toStatus, reason, customerMessage 
  * policy snapshot; a COVERED result is refused when they fail. Every result is
  * recorded in coverage_results and summarised on the claim.
  */
-export async function verifyCoverage(ctx, id, { result, notes, clauseRefs }) {
+export async function verifyCoverage(ctx, id, { result, notes, clauseRefs, aiRunRef = null }) {
   requirePermission(ctx.actor, 'claims.verifyCoverage')
   return ctx.db.tx(async (t) => {
     await loadAccessibleClaim(t, ctx.actor, id)
@@ -563,6 +563,7 @@ export async function verifyCoverage(ctx, id, { result, notes, clauseRefs }) {
       checks: check.checks,
       notes: notes || (result === 'COVERED' ? 'Verified against the policy snapshot' : check.reasons.join('; ') || null),
       reviewed_by: ctx.actor.id,
+      ai_run_ref: aiRunRef,
     })
     const updated = await t.updateById('claims', id, {
       coverage_result: result,

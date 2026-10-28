@@ -40,11 +40,24 @@ const schema = z.object({
 
   // AI automation. "none" disables AI features; the API then returns setup
   // instructions instead of results. Credentials stay server-side.
-  AI_PROVIDER: z.enum(['none', 'anthropic']).default('none'),
+  AI_PROVIDER: z.enum(['none', 'anthropic', 'ollama']).default('none'),
   ANTHROPIC_API_KEY: z.string().optional(),
   AI_MODEL: z.string().trim().min(1).default('claude-opus-5-5'),
   AI_TIMEOUT_MS: z.coerce.number().int().min(5_000).max(600_000).default(90_000),
   AI_MAX_RETRIES: z.coerce.number().int().min(0).max(5).default(2),
+  // Local models through Ollama (AI_PROVIDER=ollama). Nothing leaves the machine running Ollama.
+  OLLAMA_BASE_URL: z.string().trim().url().default('http://localhost:11434'),
+  OLLAMA_MODEL: z.string().trim().min(1).default('llama3.1:8b'),
+  // Used only for image documents (document extraction); text agents use OLLAMA_MODEL.
+  OLLAMA_VISION_MODEL: z.string().trim().min(1).default('llama3.2-vision'),
+  // Bearer key for a hosted Ollama (ollama.com) or a self-hosted Ollama behind an authenticating proxy.
+  OLLAMA_API_KEY: z.string().optional(),
+
+  // Scheduled jobs called by a scheduler (Vercel Cron) instead of the in-process timer.
+  // GET /api/v1/internal/cron/jobs with "Authorization: Bearer <CRON_SECRET>"; unset disables the endpoint.
+  CRON_SECRET: z.string().min(16).optional(),
+  // Largest upload in MB (at most 10). Vercel functions accept requests up to 4.5 MB, so use 4 there.
+  MAX_UPLOAD_MB: z.coerce.number().min(1).max(10).default(10),
 
   // Field-level encryption for bank details and claimant contact data
   // (AES-256-GCM). 32 bytes, base64 or hex.

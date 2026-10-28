@@ -2,6 +2,7 @@ import multer from 'multer'
 import { ZodError } from 'zod'
 import { AppError, fromDatabaseError } from '../utils/errors.js'
 import { logger } from '../config/logger.js'
+import { uploadLimitBytes } from './upload.js'
 
 export function notFoundHandler(req, res) {
   res.status(404).json({
@@ -15,7 +16,7 @@ export function errorHandler(err, req, res, next) {
   if (error instanceof ZodError) {
     error = new AppError(422, 'VALIDATION_ERROR', 'Request validation failed', formatZod(error))
   } else if (error instanceof multer.MulterError) {
-    const message = error.code === 'LIMIT_FILE_SIZE' ? 'File exceeds the 10 MB limit' : error.message
+    const message = error.code === 'LIMIT_FILE_SIZE' ? `File exceeds the ${uploadLimitBytes / 1024 / 1024} MB limit` : error.message
     error = new AppError(error.code === 'LIMIT_FILE_SIZE' ? 413 : 400, 'UPLOAD_REJECTED', message)
   } else if (error?.type === 'entity.parse.failed') {
     error = new AppError(400, 'INVALID_JSON', 'Request body is not valid JSON')

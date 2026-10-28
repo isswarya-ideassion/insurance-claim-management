@@ -15,6 +15,7 @@ import { Input, Textarea } from '@/components/ui/input.js'
 import { Select } from '@/components/ui/select.js'
 import { PayeeIntake } from './PayeeIntake.js'
 import { formatDateTime, formatMoney, formatRelative, toDateTimeLocal, formatLocation } from '@/utils/format.js'
+import { TriageAgentCard } from '@/components/automation/AgentPanels.js'
 
 const INTAKE_STAGES = ['SUBMITTED', 'POLICY_VERIFICATION', 'REOPENED']
 
@@ -345,6 +346,7 @@ export function OverviewTab({ detail, reload }) {
         confirmLabel="Record exception"
         onConfirm={async (reason) => Boolean(await action.run(async () => { await claimsService.documentException(claim.id, reason); await reload() }, { success: 'Document exception recorded' }))}
       />
+      {claim.claim_number && <TriageAgentCard claim={claim} onApplied={reload} />}
     </div>
   )
 }

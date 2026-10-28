@@ -2,17 +2,8 @@ import { loadConfig } from './config/env.js'
 import { logger } from './config/logger.js'
 import { createDependencies } from './services/container.js'
 import { createApp } from './app.js'
-import { runOverdueSweep } from './modules/tasks/tasks.service.js'
-import { runDeadlineReminderSweep } from './modules/automation/reminders.service.js'
-import { runSlaSweep } from './services/sla.service.js'
+import { ensurePartitions, runScheduledJobs } from './jobs.js'
 import { DEMO_DOMAIN } from './seed/demoData.js'
-
-/** Keeps monthly audit and AI-run partitions three months ahead (rows never land in the default partition). */
-async function ensurePartitions(deps) {
-  for (const table of ['audit_logs', 'ai_runs']) {
-    await deps.db.query('select public.create_monthly_partitions($1, current_date, 3)', [table])
-  }
-}
 
 async function main() {
   const config = loadConfig()
@@ -43,10 +34,7 @@ async function main() {
   let timer = null
   if (config.OVERDUE_SWEEP_MINUTES > 0) {
     timer = setInterval(() => {
-      runOverdueSweep(deps).catch((err) => logger.error('overdue sweep failed', { error: err.message }))
-      runDeadlineReminderSweep(deps).catch((err) => logger.error('reminder sweep failed', { error: err.message }))
-      runSlaSweep(deps).catch((err) => logger.error('sla sweep failed', { error: err.message }))
-      ensurePartitions(deps).catch((err) => logger.error('partition maintenance failed', { error: err.message }))
+      runScheduledJobs(deps).catch((err) => logger.error('scheduled jobs failed', { error: err.message }))
     }, config.OVERDUE_SWEEP_MINUTES * 60_000)
     timer.unref()
   }

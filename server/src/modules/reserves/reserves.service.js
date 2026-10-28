@@ -188,6 +188,7 @@ export async function reviseReserve(ctx, claimId, input) {
       amount: input.amount,
       reasonCode: input.reasonCode,
       notes: input.notes,
+      aiRunRef: input.aiRunRef || null,
     })
   })
 }

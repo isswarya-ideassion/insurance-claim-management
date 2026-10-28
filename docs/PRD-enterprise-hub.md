@@ -1,6 +1,6 @@
 # Enterprise Claims Operations Hub — Product Requirements Document
 
-**Version 1.5** · Original draft: October 21, 2026 · Revised: October 22, 2026 (1.1), October 23, 2026 (1.2), October 26, 2026 (1.3), October 27, 2026 (1.4, 1.5)
+**Version 1.6** · Original draft: October 21, 2026 · Revised: October 22, 2026 (1.1), October 23, 2026 (1.2), October 26, 2026 (1.3), October 27, 2026 (1.4, 1.5), October 28, 2026 (1.6)
 **Owner:** Mohammed Naveed · **Status:** DRAFT, awaiting sign-off · **Target delivery:** October 27, 2026
 
 > **About this revision.** Version 1.0 was reviewed against the four requirement areas requested for this release (customer data collection and role-based access, end-to-end claim timelines, AI integration and technology stack, and security) and against the code in this repository. Sections marked **[New in 1.1]** were added; sections marked **[Updated in 1.1]** were changed. Section 0 lists every finding. Version 1.2 reduced the role model to the seven PRD roles and recorded the database schema as implemented (§0.4, §2, §5.5). Version 1.3 splits the manager persona: new claims go directly to a Claims Operations Manager, and approvals stay with the Claims Manager (§0.5, §2). Version 1.4 moves settlement approval within authority to the assigned adjuster (§0.6). Version 1.5 records the portal changes made this week: rupee amounts, Indian mobile numbers, loss city and country, policy renewal requests, claim filters, rejection notifications and masked settlement amounts (§0.7). The as-built MVP specification remains in [PRD.md](PRD.md); Appendix A maps each requirement here to its implementation status.
@@ -75,6 +75,13 @@ Portal enhancements (migration `20261027000014_ui_enhancements.sql`).
 10. **Masked settlement amounts.** Customers see approved and paid settlement amounts as ₹ ••••• until they choose to show them. Staff access to settlement amounts is unchanged (role-restricted on the server).
 11. **Timestamps.** The claim timeline and claim lists show date and time ("27 Oct 2026, 5:36 pm") in one format; relative times are shown alongside.
 12. **Claims Manager dashboard.** The settlement tile counts only settlements waiting for a Claims Manager, not those within adjuster authority.
+
+### 0.8 Changes in 1.6 **[New in 1.6]**
+
+1. **Local AI with Ollama.** `AI_PROVIDER=ollama` runs every agent on local models (default `llama3.1:8b`, `llama3.2-vision` for image documents), so claim data does not leave the organization's servers. The agent's JSON schema is passed as the required output format and the output is validated before use. The Claude API (`anthropic`) remains available.
+2. **All six agents in §3 are built**, each on the claim tab where its decision is made: coverage check (§3.2), triage with fraud score and adjuster routing (§3.3), reserve recommendation (§3.5), denial letter (§3.6), payee anomaly check (§3.7) and subrogation and salvage assessment (§3.9).
+3. **Human in the loop.** Agents only suggest. A person with the matching business permission applies each suggestion (or discards it), and the record created from it points back to the run (`ai_run_ref`). Triage is applied in parts: classification and routing by operations, fraud flags by Compliance & Security.
+4. **Safeguards in code.** Clause IDs, fraud reason codes, anomaly codes and adjusters outside the provided lists are removed; an ineligible policy is never suggested as covered; coverage-negative, fraud-related and financial output always needs a person; payee output that concludes fraud or advises on releasing a payment is discarded; denial letters use placeholders instead of personal details and flag missing review and grievance wording; recovery expectations cannot exceed the amount paid.
 
 ---
 
@@ -198,7 +205,7 @@ Key: **C** create, **R** read, **U** update, **A** approve, **X** execute/issue,
 | Audit logs | - | R (claims in scope) | - | - | - | R (pipeline) | R (all), verify chain | - |
 | Users, roles and authority overrides | - | - | - | - | - | - | C, U (never own) | - |
 | Integration config (sync runs, xref, precedence) | - | - | - | - | - | C, U | R | - |
-| AI agent runs (`ai_runs`) | R, accept/reject | R, accept/reject | - | R, accept/reject | - | - | R | - |
+| AI agent runs (`ai_runs`) **[Updated in 1.6]** | R, run and apply coverage and triage | R, run and apply triage, denial letters, subrogation | R, run and apply reserve, subrogation (own claims) | R, accept/reject extraction | R, run payee check | - | R, apply fraud flags | - |
 
 ### 2.3 Access control rules
 
@@ -1036,7 +1043,7 @@ Delivery uses forward-deployed engineers: each pod embeds an engineer with the c
 
 ---
 
-## Appendix A. Implementation status against this PRD (as of October 27, 2026) **[Updated in 1.5]**
+## Appendix A. Implementation status against this PRD (as of October 28, 2026) **[Updated in 1.6]**
 
 Status key: **Done**: implemented and covered by tests · **Partial**: some of the requirement exists · **Not started**.
 
@@ -1061,20 +1068,20 @@ Status key: **Done**: implemented and covered by tests · **Partial**: some of t
 | §2.3 Four-eyes governance | Partial | Configuration proposals and authority limits; role grants are single-approver but never self-grants |
 | §2A Customer data collection | Partial | Privacy-notice consent at registration, declaration consent at submission, encrypted claimant contact and bank details, audited customer records, Indian mobile format, loss city and country (1.5). No postal address, email or phone OTP verification, notification preferences, self-service export, erasure requests or retention anonymization job |
 | §3.1 FNOL | Done | Six-step wizard, eligibility, duplicate detection, idempotent submit, policy snapshot, required artifacts, acknowledgement clock. 1.5: no future loss dates on any save, insured name fixed from the policy, address + city + country, required documents before step 4 can be left, +91 mobile field |
-| §3.2 Coverage verification | Partial | Recorded coverage results with clause references against the snapshot; no AI clause matching |
-| §3.3 Triage | Partial | Severity from segment thresholds, fraud score and band, manual assignment with workload; no routing agent; fraud scores above the threshold are not yet routed to a special investigation queue |
+| §3.2 Coverage verification | Done | Recorded coverage results with clause references against the snapshot; AI coverage check cites policy clause IDs and is recorded by a claims officer (1.6) |
+| §3.3 Triage | Partial | AI triage: severity, complexity, fraud score with taxonomy reason codes, adjuster routing (1.6). Gap: fraud scores above the threshold are shown, not yet routed to a special investigation queue |
 | §3.4 Documents | Partial | Versioned documents, review, artifact requests, reminders, AI extraction with confidence. No malware scan or camera capture |
-| §3.5 Reserves | Done | Ledger with authority decision node; manager approve/modify/reject/return; release on closure |
-| §3.6 Evaluation & decision | Partial | Versioned evaluations with liability and decision; no denial-letter drafting |
-| §3.7 Settlement | Partial | Authority-routed approval steps (assigned adjuster within limit, otherwise Claims Manager), payee verification, payment blocks; customers see settlement amounts masked until revealed (1.5); no sanctions screening, payee agent or release document |
+| §3.5 Reserves | Done | Ledger with authority decision node; manager approve/modify/reject/return; release on closure; AI reserve recommendation per coverage line with comparables, override needs a reason (1.6) |
+| §3.6 Evaluation & decision | Done | Versioned evaluations with liability and decision; AI denial-letter drafting, edited and approved by a Claims Manager and saved as a PDF (1.6) |
+| §3.7 Settlement | Partial | Authority-routed approval steps (assigned adjuster within limit, otherwise Claims Manager), payee verification, payment blocks; customers see settlement amounts masked until revealed (1.5); AI payee anomaly check with approved codes (1.6); no sanctions screening or release document |
 | §3.8 Payment | Partial | Idempotent issue, blocks, resolution, manual reconciliation on a **simulated** adapter; no daily reconciliation job, reissue or stop-payment |
-| §3.9 Closure & recovery | Done | Closure requests, reserve release, subrogation and salvage tracking |
+| §3.9 Closure & recovery | Done | Closure requests, reserve release, subrogation and salvage tracking; AI subrogation and salvage assessment with referral deadline (1.6) |
 | §3.10 SLA clocks | Done | Stage clocks with pause on client-owed documents and holds, escalation levels 1–2, SLA attainment report. Timeline shows date and time per event (1.5). The customer tracker does not yet show the expected date of the next step |
 | §4 PWA, offline, camera | Not started | Responsive web app only |
 | §5 Schema | Done | Migration `20261022000007` (§5.5) |
 | §5.4 Audit hash chain | Done | Chained `audit_logs` with `verify_audit_chain()` and a verification button for Compliance & Security; no Object Lock export |
 | §6.0 Docker / AWS / IaC / CI | Not started | |
-| §6.4 Claude agents | Partial | Intake parser and claim summarizer on `claude-opus-5-5` with schema output, explicit effort and server-side fallback; other agents not built |
+| §6.4 AI agents | Done (1.6) | Intake parser, claim summarizer and the six §3 agents (coverage, triage and routing, reserve, denial letter, payee anomaly, subrogation) in `agents.service.js`; providers: Ollama (local) or Claude API. Not built: nightly batch runs, SMS/push delivery of AI-drafted requests, an AI evaluation harness with release gates (§6.7) |
 | §7.2 MFA / SSO | Not started | Email + password (API sign-in on PostgreSQL) |
 | §7.2 Field-level encryption | Done | AES-256-GCM with HKDF-derived keys (`FIELD_ENCRYPTION_KEY`) for bank details and claimant contact; HMAC for duplicate detection |
 | §7.2 Upload malware scan | Not started | Extension and content sniffing, size limit |

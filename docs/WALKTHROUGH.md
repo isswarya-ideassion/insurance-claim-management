@@ -295,6 +295,7 @@ The database trigger then re-checks the same transition table, roles, holds and 
 | `20261027000012_adjuster_settlement_authority.sql` | Adjuster settlement limits; Payment Operator settlement limits ended; `enforce_settlement_step` lets only the assigned adjuster decide an adjuster step; pending steps re-routed |
 | `20261027000013_workflow_transitions.sql` | Regenerated transitions: adjusters release settlements for payment |
 | `20261027000014_ui_enhancements.sql` | Loss city and country, INR currency, rejection notification templates, policy renewal requests |
+| `20261028000015_claim_agents.sql` | Claim agents: recovery link to AI runs, payment operators may read runs, partial apply of triage |
 
 ### 5.2 Entity model
 
@@ -700,7 +701,7 @@ npm run lint         # server syntax/import check; client import resolution
 npm run build        # production build must succeed
 ```
 
-Status on Oct 27, 2026: **228 tests passing** (194 server, 34 client; server tests on PostgreSQL 17), lint and build clean.
+Status on Oct 28, 2026: **246 tests passing** (210 server, 36 client; server tests on PostgreSQL 17), lint and build clean.
 
 How the server tests work: [tests/global-setup.js](../server/tests/global-setup.js) migrates and seeds one template database on the server in `TEST_DATABASE_URL`; [tests/helpers.js](../server/tests/helpers.js) `createTestContext()` clones it for each test file (`create database … template …`) and boots the real Express app on the clone, which is dropped afterwards. `ctx.as('ops.olivia')` returns a client that logs in and calls the API with that user's token. Constraints, triggers and RLS therefore run exactly as in production.
 

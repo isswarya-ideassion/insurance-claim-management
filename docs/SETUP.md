@@ -61,7 +61,11 @@ Other server variables:
 | `PAYMENT_ADAPTER` | `simulated` (only option in the MVP) |
 | `OVERDUE_SWEEP_MINUTES` | Interval for the overdue-task, SLA-escalation and reminder sweeps; `0` disables |
 | `AUTH_RATE_LIMIT` | Optional login/registration attempts per IP per 15 minutes |
-| `AI_PROVIDER` | `none` (default — AI features show setup instructions) or `anthropic` |
+| `AI_PROVIDER` | `none` (default — AI features show setup instructions), `ollama` (local models) or `anthropic` (Claude API) |
+| `OLLAMA_API_KEY` | Bearer key for a hosted Ollama (ollama.com) or one behind an authenticating proxy. Empty for a local Ollama |
+| `CRON_SECRET` | Enables `GET /api/v1/internal/cron/jobs` for an external scheduler such as Vercel Cron (see [DEPLOY-VERCEL.md](DEPLOY-VERCEL.md)) |
+| `MAX_UPLOAD_MB` | Largest upload, 1–10 MB (default 10; 4 on Vercel) |
+| `OLLAMA_BASE_URL` / `OLLAMA_MODEL` / `OLLAMA_VISION_MODEL` | With `AI_PROVIDER=ollama`: server address (default `http://localhost:11434`), text model (default `llama3.1:8b`) and the model used for image documents (default `llama3.2-vision`). Ollama cannot read PDFs; extraction of PDF documents needs `anthropic` or manual review |
 | `ANTHROPIC_API_KEY` | **Server only.** Needed when `AI_PROVIDER=anthropic` |
 | `AI_MODEL` | Default `claude-opus-5-5` |
 | `AI_TIMEOUT_MS` / `AI_MAX_RETRIES` | Per-request timeout (default 90000) and retries for transient errors (default 2) |
@@ -202,7 +206,15 @@ Use a database with demo data (`SEED_DEMO_DATA=true`, or `npm run db:seed-demo`;
 **Customer records and automation**
 27. Click *Customer Records* on the login page (`records.rosa`) → the customer records screen opens: search `HP-MOT-100231` (Alice), a phone fragment such as `0102` (Ben) or part of a customer ID; export CSV; open Alice to see policies, claims, documents, consents and the retention date.
 28. As `ops.olivia` open `HPC-2026-000101` → *Automation*: medical report and invoice show *Not received*; *Prepare reminder draft* → review → *Approve and send*. Alice receives one notification and the document requests.
-29. With `AI_PROVIDER=none` the Automation tab shows setup instructions and AI buttons are disabled. With a real key: *Extract fields* → review values with confidence, pages and quotes → select fields → confirm → the claim updates and the audit log records the agent run and the human confirmation.
+29. With `AI_PROVIDER=none` the Automation tab shows setup instructions and AI buttons are disabled. With a provider configured: *Extract fields* → review values with confidence, pages and quotes → select fields → confirm → the claim updates and the audit log records the agent run and the human confirmation.
+
+30. **Claim agents with Ollama.** Install Ollama (ollama.com), run `ollama pull llama3.1:8b`, set `AI_PROVIDER=ollama` in `server/.env` and restart the API. Then:
+    - As `ops.olivia` open `HPC-2026-000102` → *Policy & Coverage* → *Coverage check* → *Run* → review the cited clauses → *Record coverage result*.
+    - As `ops.olivia` open `HPC-2026-000105` → *Overview* → *Triage, fraud and routing* → *Run* → apply severity and complexity, then *Assign adjuster* (the claim moves to Investigation). As `compliance.carlos` the same card shows the fraud score and *Record fraud flags*.
+    - As `adjuster.adam` open `HPC-2026-000106` → *Reserves* → *Reserve recommendation* → *Run* → *Set reserve* (a different amount needs a reason).
+    - As `payments.priya` open `HPC-2026-000111` → *Approvals* → *Payee anomaly check* → *Run* → *Mark reviewed* or *Create task for payments team*.
+    - As `adjuster.amara` open `HPC-2026-000114` → *Closure & Recovery* → *Subrogation and salvage* → *Run* → *Create recovery*.
+    - For a denial letter, record coverage as *Not covered* (or submit an evaluation with decision *Deny*); the adjuster runs *Denial letter* on the *Evaluation* tab and `manager.maria` edits it and selects *Approve and save letter*.
 
 ## 8. Production notes
 

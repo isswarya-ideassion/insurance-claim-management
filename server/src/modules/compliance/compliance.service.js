@@ -9,7 +9,7 @@ import { notify, claimLink, userIdsWithRole } from '../../services/notification.
 import { profileMap, nameOf } from '../../services/presenters.js'
 import { createSettlementRequest } from '../settlements/settlements.service.js'
 
-const SEVERITY_FACTOR = { HIGH: 1, MEDIUM: 0.6, LOW: 0.3 }
+export const SEVERITY_FACTOR = { HIGH: 1, MEDIUM: 0.6, LOW: 0.3 }
 const COMPLIANCE = { checkpoint_type: 'COMPLIANCE' }
 
 async function flagsByReview(t, reviews) {

@@ -96,6 +96,15 @@ export const PERMISSIONS = {
   'automation.applyExtraction': [COM, MGR, DR],
   'automation.summarize': [COM, MGR],
   'automation.reminders': [COM, MGR, DR],
+
+  // Claim agents (PRD section 3). Each suggestion is applied by a person with the matching business permission.
+  'ai.coverageCheck': [COM],
+  'ai.triage': [COM, MGR],
+  'ai.reserve': [ADJ],
+  'ai.denialLetter': [ADJ, MGR],
+  'ai.denialLetterApprove': [MGR],
+  'ai.payeeCheck': [COM, ADJ, MGR, PAY],
+  'ai.subrogation': [ADJ, MGR],
 }
 
 /** Tabs of the unified Claim Details workspace and the roles that may see them. */
