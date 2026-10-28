@@ -18,6 +18,7 @@ import { ApprovalsTab, PaymentsTab, ReservesTab } from './workspace/FinancialTab
 import { ComplianceTab } from './workspace/ComplianceTab.js'
 import { ActivityTab } from './workspace/ActivityTab.js'
 import { AutomationTab } from './workspace/AutomationTab.js'
+import { RecoveryTab } from './workspace/RecoveryTab.js'
 import { formatMoney, formatRelative } from '@/utils/format.js'
 
 const TAB_COMPONENTS = {
@@ -30,6 +31,7 @@ const TAB_COMPONENTS = {
   approvals: ApprovalsTab,
   compliance: ComplianceTab,
   payments: PaymentsTab,
+  recovery: RecoveryTab,
   automation: AutomationTab,
   activity: ActivityTab,
 }
@@ -60,7 +62,7 @@ export function ClaimWorkspace({ detail, reload }) {
               )}
             </div>
             <p className="mt-1 text-sm text-muted-foreground">
-              {POLICY_TYPE_LABELS[claim.claim_type]} · {detail.policy?.policy_number} · {claim.customer_name} · {formatMoney(claim.estimated_loss)}
+              {POLICY_TYPE_LABELS[claim.claim_type]} · {detail.policy?.external_policy_no} · {claim.customer_name} · {formatMoney(claim.estimated_loss)}
               {claim.status === 'ON_HOLD' && claim.hold_from_status && ` · held from ${claim.hold_from_status.replaceAll('_', ' ').toLowerCase()}`}
             </p>
             <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1 text-xs text-muted-foreground sm:grid-cols-4">

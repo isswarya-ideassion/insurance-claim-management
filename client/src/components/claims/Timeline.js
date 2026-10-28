@@ -27,8 +27,8 @@ export function Timeline({ events }) {
             </span>
             <div className="flex flex-wrap items-baseline justify-between gap-x-3">
               <p className="text-sm font-medium">{e.title}</p>
-              <time className="text-xs text-muted-foreground" dateTime={e.at} title={formatDateTime(e.at)}>
-                {formatRelative(e.at)}
+              <time className="tabular text-xs text-muted-foreground" dateTime={e.at}>
+                {formatDateTime(e.at)} <span className="text-muted-foreground/70">· {formatRelative(e.at)}</span>
               </time>
             </div>
             {e.description && <p className="mt-0.5 whitespace-pre-line text-sm text-muted-foreground">{e.description}</p>}

@@ -5,7 +5,7 @@ import {
   ASSIGNMENT_ROLE_REQUIRED_USER_ROLE,
   STATUS_LABELS,
 } from '../../../../shared/constants.js'
-import { STATUS_SLA_HOURS } from '../../../../shared/workflow.js'
+import { slaHours } from '../../services/config.service.js'
 import { businessRule, validationError } from '../../utils/errors.js'
 import { hoursFromNow } from '../../utils/format.js'
 import { loadAccessibleClaim, requirePermission, requireNotOwnClaim, requireStaffView } from '../../services/access.service.js'
@@ -39,7 +39,7 @@ export async function assignClaim(ctx, claimId, { assigneeId, assignmentRole, re
     }
     if (assigneeId === claim.customer_id) throw businessRule('CONFLICT_OF_INTEREST', 'A claimant cannot be assigned to their own claim')
 
-    const assignee = await t.findById('profiles', assigneeId)
+    const assignee = await t.findById('users', assigneeId)
     if (!assignee?.is_active) throw validationError('Assignee not found or inactive')
     const assigneeRoles = (await t.findMany('user_roles', { where: { user_id: assigneeId } })).map((r) => r.role_code)
     const required = ASSIGNMENT_ROLE_REQUIRED_USER_ROLE[assignmentRole]
@@ -95,25 +95,27 @@ export async function assignClaim(ctx, claimId, { assigneeId, assignmentRole, re
     if (assignmentRole === 'ADJUSTER') {
       await t.update(
         'tasks',
-        { claim_id: claimId, task_type: 'ASSIGN_ADJUSTER', status: { in: OPEN_TASK_STATUSES } },
+        { claim_id: claimId, type: 'ASSIGN_ADJUSTER', status: { in: OPEN_TASK_STATUSES } },
         { status: 'DONE', completed_at: new Date(), completed_by: ctx.actor.id },
       )
       await t.update(
         'tasks',
-        { claim_id: claimId, task_type: 'INVESTIGATION', status: { in: OPEN_TASK_STATUSES } },
-        { assignee_id: assigneeId },
+        { claim_id: claimId, type: 'INVESTIGATION', status: { in: OPEN_TASK_STATUSES } },
+        { owner_user_id: assigneeId, claimed_at: new Date() },
       )
       if (claim.status === 'ADJUSTER_ASSIGNMENT') {
         await t.insert('tasks', {
           claim_id: claimId,
           title: `Investigate claim ${claim.claim_number}`,
           description: 'Complete the investigation checklist and submit a loss assessment with a reserve recommendation.',
-          task_type: 'INVESTIGATION',
-          assignee_id: assigneeId,
-          assigned_role: ROLES.CLAIMS_ADJUSTER,
+          type: 'INVESTIGATION',
+          owner_user_id: assigneeId,
+          claimed_at: new Date(),
+          source_stage: 'INVESTIGATION',
+          owner_role: ROLES.ADJUSTER,
           priority: claim.priority,
-          is_mandatory: true,
-          due_at: hoursFromNow(STATUS_SLA_HOURS.INVESTIGATION),
+          blocking: true,
+          due_at: hoursFromNow((await slaHours(t, claim.segment, 'INVESTIGATION')) || 240),
           created_by: ctx.actor.id,
         })
         updated = await transitionClaim(ctx, t, updated, 'INVESTIGATION', { reason: `Adjuster ${assignee.full_name} assigned` })
@@ -125,13 +127,13 @@ export async function assignClaim(ctx, claimId, { assigneeId, assignmentRole, re
 
 export async function listAssignees(ctx, role) {
   const users = await ctx.db.query(
-    `select p.id, p.full_name, p.email, ur.approval_limit
-       from public.user_roles ur join public.profiles p on p.id = ur.user_id
+    `select p.id, p.full_name, p.email
+       from public.user_roles ur join public.users p on p.id = ur.user_id
       where ur.role_code = $1 and p.is_active
       order by p.full_name`,
     [role],
   )
-  const column = { CLAIMS_ADJUSTER: 'assigned_adjuster_id', DOCUMENT_REVIEWER: 'assigned_reviewer_id' }[role] || 'assigned_owner_id'
+  const column = { ADJUSTER: 'assigned_adjuster_id', DOCUMENT_REVIEWER: 'assigned_reviewer_id' }[role] || 'assigned_owner_id'
   const loads = users.length
     ? await ctx.db.query(
         `select ${column} as user_id, count(*)::int as count from public.claims
@@ -147,8 +149,8 @@ export async function teamWorkload(ctx) {
   requirePermission(ctx.actor, 'reports.teamMetrics')
   const staff = await ctx.db.query(
     `select p.id, p.full_name, array_agg(ur.role_code order by ur.role_code) as roles
-       from public.profiles p join public.user_roles ur on ur.user_id = p.id
-      where p.is_active and ur.role_code in ('CLAIMS_OPERATIONS', 'DOCUMENT_REVIEWER', 'CLAIMS_ADJUSTER')
+       from public.users p join public.user_roles ur on ur.user_id = p.id
+      where p.is_active and ur.role_code in ('CLAIMS_OPS_MANAGER', 'OPS_MANAGER', 'DOCUMENT_REVIEWER', 'ADJUSTER')
       group by p.id, p.full_name order by p.full_name`,
   )
   const ids = staff.map((s) => s.id)
@@ -166,10 +168,10 @@ export async function teamWorkload(ctx) {
       [ids, active],
     ),
     ctx.db.query(
-      `select assignee_id as user_id, count(*)::int as open_tasks,
+      `select owner_user_id as user_id, count(*)::int as open_tasks,
               count(*) filter (where due_at < now())::int as overdue_tasks
-         from public.tasks where assignee_id = any($1) and status in ('OPEN', 'IN_PROGRESS')
-        group by assignee_id`,
+         from public.tasks where owner_user_id = any($1) and status in ('OPEN', 'IN_PROGRESS')
+        group by owner_user_id`,
       [ids],
     ),
   ])

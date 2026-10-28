@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
-import { Bell, CheckCheck, Mail } from 'lucide-react'
+import { Bell, CheckCheck, XCircle } from 'lucide-react'
+import { REJECTION_NOTIFICATION_TEMPLATES } from '@shared/constants.js'
 import { notificationsService } from '@/services/workflowService.js'
 import { useApiQuery, useAction } from '@/hooks/useApi.js'
 import { useListParams } from '@/hooks/useListParams.js'
@@ -12,13 +13,6 @@ import { Button } from '@/components/ui/button.js'
 import { Badge } from '@/components/ui/badge.js'
 import { formatRelative, formatDateTime, humanize } from '@/utils/format.js'
 import { cn } from '@/lib/utils.js'
-
-const EMAIL_LABEL = {
-  LOGGED_DEV: 'Email logged (dev, not delivered)',
-  SENT: 'Email sent',
-  FAILED: 'Email failed',
-  PENDING: 'Email pending',
-}
 
 export default function NotificationsPage() {
   const { params, setParams } = useListParams({ pageSize: 20 })
@@ -73,22 +67,31 @@ export default function NotificationsPage() {
           {(rows, meta) => (
             <>
               <ul className="divide-y">
-                {rows.map((n) => (
-                  <li key={n.id} className={cn('flex gap-3 px-5 py-4', !n.is_read && 'bg-teal-50/40')}>
-                    <span className={cn('mt-1.5 size-2 shrink-0 rounded-full', n.is_read ? 'bg-transparent' : 'bg-accent')} aria-label={n.is_read ? undefined : 'Unread'} />
+                {rows.map((n) => {
+                  const rejected = REJECTION_NOTIFICATION_TEMPLATES.includes(n.type)
+                  return (
+                  <li
+                    key={n.id}
+                    className={cn(
+                      'flex gap-3 border-l-4 px-5 py-4',
+                      rejected ? 'border-l-red-600 bg-red-50/70' : cn('border-l-transparent', !n.is_read && 'bg-teal-50/40'),
+                    )}
+                  >
+                    {rejected ? (
+                      <XCircle className="mt-0.5 size-5 shrink-0 text-red-600" aria-hidden="true" />
+                    ) : (
+                      <span className={cn('mt-1.5 size-2 shrink-0 rounded-full', n.is_read ? 'bg-transparent' : 'bg-accent')} aria-label={n.is_read ? undefined : 'Unread'} />
+                    )}
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <p className="font-medium">{n.title || 'Notification'}</p>
-                        {n.type && <Badge tone="neutral">{humanize(n.type)}</Badge>}
+                        <p className={cn('font-medium', rejected && 'text-red-900')}>{n.title || 'Notification'}</p>
+                        {/* The label says "Rejected" in words, so the meaning does not depend on colour. */}
+                        {rejected ? <Badge tone="red">Rejected</Badge> : n.type && <Badge tone="neutral">{humanize(n.type)}</Badge>}
+                        {rejected && !n.is_read && <span className="text-xs font-medium text-red-700">Unread</span>}
                       </div>
                       <p className="mt-0.5 text-sm text-muted-foreground">{n.message}</p>
                       <div className="mt-1.5 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                        <time dateTime={n.created_at} title={formatDateTime(n.created_at)}>{formatRelative(n.created_at)}</time>
-                        {EMAIL_LABEL[n.email_status] && (
-                          <span className="inline-flex items-center gap-1">
-                            <Mail className="size-3" aria-hidden="true" /> {EMAIL_LABEL[n.email_status]}
-                          </span>
-                        )}
+                        <time dateTime={n.created_at}>{formatDateTime(n.created_at)} · {formatRelative(n.created_at)}</time>
                       </div>
                     </div>
                     <div className="flex shrink-0 flex-col items-end gap-1.5">
@@ -104,7 +107,8 @@ export default function NotificationsPage() {
                       )}
                     </div>
                   </li>
-                ))}
+                  )
+                })}
               </ul>
               <Pagination meta={meta} onPageChange={(page) => setParams({ page }, { resetPage: false })} />
             </>

@@ -4,6 +4,7 @@ import { authenticate } from '../../middleware/auth.js'
 import * as controller from './auth.controller.js'
 import {
   forgotPasswordSchema,
+  consentSchema,
   loginSchema,
   registerSchema,
   resetPasswordSchema,
@@ -15,12 +16,14 @@ export function authRoutes({ authLimiter }) {
 
   router.get('/auth/me', authenticate, controller.me)
   router.patch('/auth/me', authenticate, validate({ body: updateProfileSchema }), controller.updateMe)
+  router.get('/auth/me/consents', authenticate, controller.consents)
+  router.post('/auth/me/consents', authenticate, validate({ body: consentSchema }), controller.recordConsent)
 
-  // Mock-mode authentication (404 MOCK_AUTH_DISABLED when DATA_MODE=supabase).
-  router.post('/auth/mock/login', authLimiter, validate({ body: loginSchema }), controller.mockLogin)
-  router.post('/auth/mock/register', authLimiter, validate({ body: registerSchema }), controller.mockRegister)
-  router.post('/auth/mock/forgot-password', authLimiter, validate({ body: forgotPasswordSchema }), controller.mockForgotPassword)
-  router.post('/auth/mock/reset-password', authLimiter, validate({ body: resetPasswordSchema }), controller.mockResetPassword)
+  // Email + password sign-in against the API's own credential store (auth.users).
+  router.post('/auth/login', authLimiter, validate({ body: loginSchema }), controller.login)
+  router.post('/auth/register', authLimiter, validate({ body: registerSchema }), controller.register)
+  router.post('/auth/forgot-password', authLimiter, validate({ body: forgotPasswordSchema }), controller.forgotPassword)
+  router.post('/auth/reset-password', authLimiter, validate({ body: resetPasswordSchema }), controller.resetPassword)
 
   return router
 }

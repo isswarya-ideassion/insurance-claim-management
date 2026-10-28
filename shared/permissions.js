@@ -1,91 +1,117 @@
 import { ROLES as R } from './constants.js'
 
-const OPS = R.CLAIMS_OPERATIONS
-const MGR = R.CLAIMS_MANAGER
+const CLIENT = R.CLIENT
+// Claims Operations Manager: intake, coverage, routing and payee details for new claims.
+const COM = R.CLAIMS_OPS_MANAGER
+// Claims Manager: approvals, denials, closure and reopening.
+const MGR = R.OPS_MANAGER
+const ADJ = R.ADJUSTER
 const DR = R.DOCUMENT_REVIEWER
-const ADJ = R.CLAIMS_ADJUSTER
-const PAY = R.PAYMENT_OPERATIONS
-const CO = R.COMPLIANCE_OFFICER
-const ADMIN = R.DATA_ADMIN
-const AUD = R.AUDITOR
-const CRA = R.CUSTOMER_RECORDS_ADMIN
-const CUST = R.CUSTOMER
+const PAY = R.PAYMENT_OPERATOR
+const DE = R.DATA_ENGINEER
+const CS = R.COMPLIANCE_SECURITY
 
 /**
- * Action permissions. The server enforces these on every endpoint; the client
- * uses the same map only to decide what to render. AUDITOR never appears in a
- * mutating permission (read-only role).
+ * Action permissions, following the PRD authorization matrix (section 2.2).
+ * The server enforces these on every endpoint; the client uses the same map
+ * only to decide what to render. ABAC limits (claim scope, monetary authority,
+ * separation of duties) are applied on top by the services and the database.
  */
 export const PERMISSIONS = {
-  'claims.create': [CUST, OPS],
-  'claims.viewQueue': [OPS, MGR, DR, ADJ, CO, PAY, AUD],
-  'claims.updateMeta': [OPS, MGR],
-  'claims.verifyPolicy': [OPS, MGR],
-  'claims.intakeChecklist': [OPS, MGR],
-  'claims.escalate': [OPS, MGR],
+  'claims.create': [CLIENT, COM],
+  'claims.viewQueue': [COM, MGR, DR, ADJ, CS, PAY, DE],
+  'claims.updateMeta': [COM, MGR],
+  'claims.verifyCoverage': [COM],
+  'claims.intakeChecklist': [COM],
+  'claims.escalate': [COM, MGR, ADJ],
   'claims.documentException': [MGR],
-  'claims.assign': [OPS, MGR],
-  'claims.assignAdjuster': [MGR, OPS],
-  'claims.notes.internal': [OPS, MGR, DR, ADJ, CO, PAY],
-  'claims.notes.customer': [OPS, MGR, DR, ADJ],
+  'claims.assign': [COM, MGR],
+  'claims.assignAdjuster': [COM, MGR],
+  'claims.notes.internal': [COM, MGR, DR, ADJ, CS, PAY],
+  'claims.notes.customer': [COM, MGR, DR, ADJ],
+  'claims.requestClosure': [ADJ],
+  'claims.decideClosure': [MGR],
 
-  'documents.upload': [CUST, OPS, DR, ADJ, CO],
-  'documents.review': [DR, MGR],
-  'documents.assignReviewer': [OPS, MGR, DR],
-  'documents.requestMissing': [OPS, DR, ADJ, MGR],
+  'documents.upload': [CLIENT, COM, MGR, DR, ADJ],
+  'documents.review': [DR],
+  'documents.assignReviewer': [COM, MGR, DR],
+  'documents.requestMissing': [COM, MGR, DR, ADJ],
 
-  'tasks.create': [OPS, MGR, DR, ADJ, CO, PAY],
-  'tasks.update': [OPS, MGR, DR, ADJ, CO, PAY],
+  'tasks.create': [COM, MGR, DR, ADJ, CS, PAY, DE],
+  'tasks.update': [COM, MGR, DR, ADJ, CS, PAY, DE],
 
-  'assessments.write': [ADJ],
-  'assessments.return': [MGR],
+  'evaluations.write': [ADJ],
+  'evaluations.return': [MGR],
 
-  'reserves.decide': [MGR],
-  'settlements.decide': [MGR],
+  'reserves.set': [ADJ],
+  'reserves.review': [MGR],
 
-  'compliance.review': [CO],
-  'compliance.view': [CO, MGR, AUD],
+  'settlements.approve': [ADJ, MGR],
 
-  'payments.view': [PAY, MGR, AUD, CO],
-  'payments.process': [PAY],
+  'compliance.review': [CS],
+  'compliance.view': [CS, MGR],
+
+  'fraud.viewScore': [MGR, CS],
+  'fraud.viewBand': [MGR, CS, ADJ, COM],
+
+  'payments.view': [PAY, MGR, CS],
+  'payments.issue': [PAY],
   'payments.reconcile': [PAY],
   'payments.viewBeneficiary': [PAY],
+  'payees.manage': [PAY],
+  // Payee and bank details are collected and verified at intake, before the claim moves on.
+  'payees.intake': [COM],
+  'payees.verify': [COM, PAY],
+  'policies.requestRenewal': [CLIENT],
+  'policies.decideRenewal': [COM, MGR],
 
-  'reports.view': [OPS, MGR, CO, PAY, ADMIN, AUD],
-  'reports.teamMetrics': [OPS, MGR, ADMIN, AUD],
-  'audit.view': [AUD, CO, MGR, ADMIN],
-  'admin.users': [ADMIN],
-  'admin.jobs': [ADMIN, MGR],
+  'recoveries.write': [ADJ, MGR],
+  'recoveries.view': [ADJ, MGR, CS, PAY],
 
-  // Centralized customer records: one designated read-only role. Creating,
-  // editing and deleting customers is not offered through this module.
-  'customers.view': [CRA],
-  'customers.viewDocuments': [CRA],
-  'customers.export': [CRA],
+  'reports.view': [COM, MGR, CS, PAY, DE],
+  'reports.teamMetrics': [MGR, CS],
+  'audit.view': [CS, MGR, DE],
+  'audit.viewAll': [CS],
+  'admin.users': [CS],
+  'admin.jobs': [CS, MGR],
 
-  // Automation for claims officers (Claims Operations) and managers. AI output
-  // is advisory: applying extracted values needs a separate, explicit permission.
-  'automation.view': [OPS, MGR, AUD],
-  'automation.documentChecklist': [OPS, MGR],
-  'automation.extract': [OPS, MGR],
-  'automation.applyExtraction': [OPS, MGR],
-  'automation.summarize': [OPS, MGR],
-  'automation.reminders': [OPS, MGR],
+  // Segment configuration and authority limits change by four-eyes approval.
+  'config.view': [COM, MGR, CS, PAY, DE],
+  'config.propose': [CS, MGR],
+  'config.approve': [CS, MGR],
+
+  'integrations.view': [DE, CS],
+  'integrations.manage': [DE],
+
+  // Centralized customer records are part of Compliance & Security's remit.
+  'customers.view': [CS],
+  'customers.viewDocuments': [CS],
+  'customers.export': [CS],
+
+  // Automation. AI output is advisory: applying extracted values needs a
+  // separate, explicit permission.
+  'automation.view': [COM, MGR, DR, CS],
+  'automation.documentChecklist': [COM, MGR, DR],
+  'automation.extract': [COM, MGR, DR],
+  'automation.applyExtraction': [COM, MGR, DR],
+  'automation.summarize': [COM, MGR],
+  'automation.reminders': [COM, MGR, DR],
 }
 
 /** Tabs of the unified Claim Details workspace and the roles that may see them. */
 export const CLAIM_TABS = [
-  { key: 'overview', label: 'Overview', roles: [OPS, MGR, DR, ADJ, CO, PAY, AUD] },
-  { key: 'policy', label: 'Policy', roles: [OPS, MGR, DR, ADJ, CO, AUD] },
-  { key: 'documents', label: 'Documents', roles: [OPS, MGR, DR, ADJ, CO, AUD] },
-  { key: 'investigation', label: 'Investigation', roles: [OPS, MGR, ADJ, CO, AUD] },
-  { key: 'tasks', label: 'Tasks', roles: [OPS, MGR, DR, ADJ, CO, PAY, AUD] },
-  { key: 'reserves', label: 'Reserves', roles: [MGR, ADJ, CO, AUD] },
-  { key: 'approvals', label: 'Approvals', roles: [MGR, ADJ, CO, PAY, AUD] },
-  { key: 'compliance', label: 'Compliance', roles: [CO, MGR, AUD] },
-  { key: 'payments', label: 'Payments', roles: [PAY, MGR, CO, AUD] },
-  { key: 'automation', label: 'Automation', roles: [OPS, MGR, AUD] },
-  { key: 'activity', label: 'Activity', roles: [OPS, MGR, DR, ADJ, CO, PAY, AUD] },
+  { key: 'overview', label: 'Overview', roles: [COM, MGR, DR, ADJ, CS, PAY, DE] },
+  { key: 'policy', label: 'Policy & Coverage', roles: [COM, MGR, DR, ADJ, CS] },
+  { key: 'documents', label: 'Documents', roles: [COM, MGR, DR, ADJ, CS] },
+  { key: 'investigation', label: 'Evaluation', roles: [MGR, ADJ, CS] },
+  { key: 'tasks', label: 'Tasks', roles: [COM, MGR, DR, ADJ, CS, PAY] },
+  { key: 'reserves', label: 'Reserves', roles: [MGR, ADJ, CS, PAY] },
+  { key: 'approvals', label: 'Approvals', roles: [MGR, ADJ, CS, PAY] },
+  { key: 'compliance', label: 'Compliance', roles: [CS, MGR] },
+  { key: 'payments', label: 'Payments', roles: [PAY, MGR, CS] },
+  { key: 'recovery', label: 'Closure & Recovery', roles: [MGR, ADJ, CS] },
+  { key: 'automation', label: 'Automation', roles: [COM, MGR, DR, CS] },
+  { key: 'activity', label: 'Activity', roles: [COM, MGR, DR, ADJ, CS, PAY, DE] },
 ]
 
 export function hasAnyRole(roles = [], allowed = []) {
@@ -111,4 +137,4 @@ export function permissionsFor(roles) {
   return Object.keys(PERMISSIONS).filter((p) => can(roles, p))
 }
 
-export { CUST as CUSTOMER_ROLE }
+export { CLIENT as CLIENT_ROLE }

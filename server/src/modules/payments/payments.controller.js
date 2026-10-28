@@ -11,6 +11,14 @@ export async function get(req, res) {
   ok(res, await service.getPayment(req.ctx, req.params.id))
 }
 
+export async function claimPayee(req, res) {
+  ok(res, await service.getClaimPayee(req.ctx, req.params.id))
+}
+
+export async function recordClaimPayee(req, res) {
+  ok(res, await service.recordClaimPayee(req.ctx, req.params.id, req.body))
+}
+
 export async function listForClaim(req, res) {
   ok(res, await service.listClaimPayments(req.ctx, req.params.id))
 }
@@ -27,18 +35,22 @@ export async function beneficiary(req, res) {
   ok(res, await service.revealBeneficiary(req.ctx, req.params.id))
 }
 
-export async function process(req, res) {
+export async function issue(req, res) {
   const key = idempotencyKeySchema.parse(req.get('idempotency-key'))
-  const result = await service.processPayment(req.ctx, req.params.id, key)
+  const result = await service.issuePayment(req.ctx, req.params.id, key)
   ok(res, result, { replayed: result.replayed, simulated: req.ctx.payments.isSimulated })
 }
 
-export async function retry(req, res) {
-  ok(res, await service.retryPayment(req.ctx, req.params.id, req.body))
+export async function resolveBlock(req, res) {
+  ok(res, await service.resolveBlock(req.ctx, req.params.id, req.body))
 }
 
 export async function updateBeneficiary(req, res) {
   ok(res, await service.updateBeneficiary(req.ctx, req.params.id, req.body))
+}
+
+export async function verifyPayee(req, res) {
+  ok(res, await service.verifyPayee(req.ctx, req.params.id, req.body))
 }
 
 export async function reconcile(req, res) {

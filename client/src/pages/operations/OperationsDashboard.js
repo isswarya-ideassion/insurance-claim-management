@@ -18,7 +18,8 @@ const PIPELINE = ['SUBMITTED', 'POLICY_VERIFICATION', 'DOCUMENTS_REQUIRED', 'DOC
 
 export default function OperationsDashboard() {
   const stats = useApiQuery(() => claimsService.stats(), [])
-  const recent = useApiQuery(() => claimsService.list({ status: 'SUBMITTED,POLICY_VERIFICATION', sort: 'submitted_at', order: 'asc', pageSize: 6 }), [])
+  // New claims are routed to a named Claims Operations Manager, so the dashboard leads with the user's own intake work.
+  const mine = useApiQuery(() => claimsService.list({ assigneeId: 'me', status: 'SUBMITTED,POLICY_VERIFICATION,DOCUMENTS_REQUIRED,DOCUMENT_REVIEW,ADJUSTER_ASSIGNMENT', sort: 'opened_at', order: 'asc', pageSize: 8 }), [])
   const tasks = useApiQuery(() => tasksService.list({ view: 'mine', status: 'OPEN,IN_PROGRESS', pageSize: 6 }), [])
   const s = stats.data
 
@@ -26,7 +27,7 @@ export default function OperationsDashboard() {
 
   return (
     <MotionPage>
-      <PageHeader title="Claims Operations" description="Intake, verification and routing across the claims pipeline." actions={<Button asChild><Link to="/claims">Open claims queue</Link></Button>} />
+      <PageHeader title="Claims Operations" description="New claims are assigned to you automatically. Verify coverage, collect and verify payee details, and route each claim." actions={<Button asChild><Link to="/claims">Open claims queue</Link></Button>} />
       {stats.error && <ErrorState error={stats.error} onRetry={stats.reload} />}
       {!s && !stats.error ? (
         <CardsSkeleton count={10} />
@@ -61,8 +62,8 @@ export default function OperationsDashboard() {
         </SectionCard>
       </div>
 
-      <SectionCard title="Intake queue — oldest first" className="mt-5" bodyClassName="p-0" actions={<Button size="sm" variant="ghost" asChild><Link to="/claims?status=SUBMITTED">View all</Link></Button>}>
-        <ClaimTable rows={recent.data} loading={recent.loading} error={recent.error} onRetry={recent.reload} hideColumns={['assignee']} />
+      <SectionCard title="Assigned to you — in intake, oldest first" className="mt-5" bodyClassName="p-0" actions={<Button size="sm" variant="ghost" asChild><Link to="/claims?assigneeId=me">View all</Link></Button>}>
+        <ClaimTable rows={mine.data} loading={mine.loading} error={mine.error} onRetry={mine.reload} hideColumns={['assignee']} />
       </SectionCard>
     </MotionPage>
   )

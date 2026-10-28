@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { AlertTriangle, CheckCircle2, Copy, Flag, MessageSquare, ShieldAlert, ShieldCheck, StickyNote, XCircle } from 'lucide-react'
 
 import { Link } from 'react-router-dom'
-import { POLICY_TYPE_LABELS, PRIORITIES, humanize } from '@shared/constants.js'
+import { POLICY_TYPE_LABELS, PRIORITIES, STAGE_LABELS, humanize } from '@shared/constants.js'
 import { claimsService } from '@/services/claimsService.js'
 import { useApiQuery, useAction } from '@/hooks/useApi.js'
 import { useAuth } from '@/context/AuthContext.js'
@@ -13,15 +13,56 @@ import { Button } from '@/components/ui/button.js'
 import { Checkbox, Switch } from '@/components/ui/misc.js'
 import { Input, Textarea } from '@/components/ui/input.js'
 import { Select } from '@/components/ui/select.js'
-import { formatDateTime, formatMoney, formatRelative, toDateTimeLocal } from '@/utils/format.js'
+import { PayeeIntake } from './PayeeIntake.js'
+import { formatDateTime, formatMoney, formatRelative, toDateTimeLocal, formatLocation } from '@/utils/format.js'
 
 const INTAKE_STAGES = ['SUBMITTED', 'POLICY_VERIFICATION', 'REOPENED']
 
+/** Stage SLA clocks: running, paused (for example while the client owes documents) or stopped. */
+function SlaClocks({ clocks = [] }) {
+  const current = clocks.filter((c) => c.running || c.breached_at).slice(0, 3)
+  if (!current.length) return null
+  return (
+    <SectionCard title="SLA">
+      <ul className="space-y-2 text-sm">
+        {current.map((c) => (
+          <li key={c.id} className="flex items-start justify-between gap-2">
+            <div>
+              <p className="font-medium">{c.clock_type === 'ACKNOWLEDGE' ? 'Acknowledgement' : STAGE_LABELS[c.stage] || humanize(c.stage)}</p>
+              <p className="text-xs text-muted-foreground">
+                {c.paused_at ? `Paused${c.pause_reason ? ` · ${c.pause_reason}` : ''}` : c.due_at ? `Due ${formatRelative(c.due_at)}` : 'No target'}
+              </p>
+            </div>
+            {c.breached_at ? (
+              <span className="inline-flex items-center gap-1 text-xs font-medium text-red-700"><AlertTriangle className="size-3.5" /> Breached{c.escalation_level > 0 ? ` · L${c.escalation_level}` : ''}</span>
+            ) : c.paused_at ? (
+              <span className="text-xs text-muted-foreground">Paused</span>
+            ) : (
+              <span className="text-xs text-emerald-700">On track</span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </SectionCard>
+  )
+}
+
 function IntakePanel({ detail, reload }) {
-  const { claim, eligibility, intakeChecklist } = detail
+  const { claim, eligibility, intakeChecklist, coverage } = detail
   const action = useAction()
   const [notes, setNotes] = useState('')
+  const [clauses, setClauses] = useState('')
   const editable = INTAKE_STAGES.includes(claim.status)
+
+  function record(result, success) {
+    const clauseRefs = clauses.split(',').map((c) => c.trim()).filter(Boolean)
+    return action.run(async () => {
+      await claimsService.coverageCheck(claim.id, { result, notes: notes || undefined, clauseRefs: clauseRefs.length ? clauseRefs : undefined })
+      setNotes('')
+      setClauses('')
+      await reload()
+    }, { success })
+  }
 
   async function toggle(key, checked) {
     await action.run(async () => {
@@ -31,22 +72,24 @@ function IntakePanel({ detail, reload }) {
   }
 
   return (
-    <SectionCard title="Intake & policy verification" description="Verification and checklist must be complete before routing to document review.">
+    <SectionCard title="Intake & coverage verification" description="Before the claim moves on: confirm coverage, complete the checklist, and collect and verify the payee details.">
       <div className="grid gap-6 lg:grid-cols-2">
         <div>
-          <p className="text-sm font-medium">Policy verification</p>
+          <p className="text-sm font-medium">Coverage verification</p>
           <div className="mt-2 rounded-lg border p-3">
-            {claim.policy_verified === true ? (
-              <p className="flex items-center gap-2 text-sm text-emerald-700">
-                <CheckCircle2 className="size-4" /> Verified by {claim.policy_verified_by_name} · {formatDateTime(claim.policy_verified_at)}
-              </p>
-            ) : claim.policy_verified === false ? (
-              <p className="flex items-center gap-2 text-sm text-red-700">
-                <XCircle className="size-4" /> Verification failed: {claim.policy_verification_notes}
-              </p>
+            {coverage ? (
+              <div className={`text-sm ${coverage.result === 'COVERED' ? 'text-emerald-700' : coverage.result === 'NOT_COVERED' ? 'text-red-700' : 'text-amber-700'}`}>
+                <p className="flex items-center gap-2">
+                  {coverage.result === 'COVERED' ? <CheckCircle2 className="size-4" /> : <XCircle className="size-4" />}
+                  {humanize(coverage.result)} · {coverage.reviewed_by_name || 'System'} · {formatDateTime(coverage.created_at)}
+                </p>
+                {coverage.notes && <p className="mt-1 text-xs text-muted-foreground">{coverage.notes}</p>}
+                {coverage.clause_refs?.length > 0 && <p className="mt-1 text-xs text-muted-foreground">Clauses: {coverage.clause_refs.join(', ')}</p>}
+              </div>
             ) : (
-              <p className="text-sm text-muted-foreground">Not yet verified.</p>
+              <p className="text-sm text-muted-foreground">Coverage not yet verified.</p>
             )}
+            {detail.policy?.from_snapshot && <p className="mt-2 text-xs text-muted-foreground">Checked against the policy snapshot frozen when the claim was opened.</p>}
             {eligibility && (
               <ul className="mt-3 space-y-1 text-xs">
                 {Object.entries(eligibility.checks).map(([k, ok]) => (
@@ -59,13 +102,17 @@ function IntakePanel({ detail, reload }) {
             )}
             {editable && (
               <div className="mt-3 space-y-2">
-                <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Verification notes (optional)" aria-label="Verification notes" className="min-h-16" />
-                <div className="flex gap-2">
-                  <Button size="sm" variant="accent" loading={action.pending} disabled={!eligibility?.eligible} onClick={() => action.run(async () => { await claimsService.verifyPolicy(claim.id, { verified: true, notes: notes || undefined }); await reload() }, { success: 'Policy verified' })}>
-                    <ShieldCheck /> Mark verified
+                <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Coverage notes (required unless covered)" aria-label="Coverage notes" className="min-h-16" />
+                <Input value={clauses} onChange={(e) => setClauses(e.target.value)} placeholder="Clause references, comma separated (optional)" aria-label="Clause references" />
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" variant="accent" loading={action.pending} disabled={!eligibility?.eligible} onClick={() => record('COVERED', 'Coverage confirmed')}>
+                    <ShieldCheck /> Covered
                   </Button>
-                  <Button size="sm" variant="outline" loading={action.pending} onClick={() => action.run(async () => { await claimsService.verifyPolicy(claim.id, { verified: false, notes: notes || undefined }); await reload() }, { success: 'Verification failure recorded' })}>
-                    Record failure
+                  <Button size="sm" variant="outline" loading={action.pending} onClick={() => record('NEEDS_REVIEW', 'Coverage marked for review')}>
+                    Needs review
+                  </Button>
+                  <Button size="sm" variant="outline" loading={action.pending} onClick={() => record('NOT_COVERED', 'Not-covered result recorded')}>
+                    Not covered
                   </Button>
                 </div>
                 {!eligibility?.eligible && <p className="text-xs text-red-700">{eligibility?.reasons.join('; ')}</p>}
@@ -87,6 +134,9 @@ function IntakePanel({ detail, reload }) {
             ))}
           </ul>
         </div>
+      </div>
+      <div className="mt-6 border-t pt-5">
+        <PayeeIntake claim={claim} onChanged={reload} />
       </div>
     </SectionCard>
   )
@@ -190,15 +240,20 @@ export function OverviewTab({ detail, reload }) {
           <KeyValue
             items={[
               { label: 'Claim type', value: POLICY_TYPE_LABELS[claim.claim_type] },
-              { label: 'Incident category', value: humanize(claim.incident_category) },
-              { label: 'Incident date & time', value: formatDateTime(claim.incident_at) },
-              { label: 'Location', value: claim.incident_location },
+              { label: 'Segment', value: humanize(claim.segment) },
+              { label: 'Severity', value: humanize(claim.severity) },
+              { label: 'Stage', value: claim.stage_label },
+              claim.fraud_band && { label: 'Fraud risk', value: claim.fraud_score != null ? `${humanize(claim.fraud_band)} (${claim.fraud_score})` : humanize(claim.fraud_band) },
+              { label: 'Loss type', value: humanize(claim.loss_type) },
+              { label: 'Loss date & time', value: formatDateTime(claim.loss_date) },
+              { label: 'Location', value: formatLocation(claim) },
               { label: 'Estimated loss', value: formatMoney(claim.estimated_loss) },
               { label: 'Affected property / asset', value: claim.affected_asset },
-              { label: 'Description', value: claim.incident_description, wide: true },
-              { label: 'Contact', value: `${claim.contact_name} · ${claim.contact_phone}` },
-              { label: 'Contact email', value: claim.contact_email },
-              { label: 'Submitted', value: formatDateTime(claim.submitted_at) },
+              { label: 'Description', value: claim.loss_description, wide: true },
+              claim.contact_name && { label: 'Contact', value: `${claim.contact_name} · ${claim.contact_phone}` },
+              claim.contact_email && { label: 'Contact email', value: claim.contact_email },
+              { label: 'Opened', value: formatDateTime(claim.opened_at) },
+              claim.reopen_count > 0 && { label: 'Reopened', value: `${claim.reopen_count} time(s)` },
               { label: 'Last updated', value: formatRelative(claim.updated_at) },
               claim.rejection_reason && { label: 'Rejection reason', value: claim.rejection_reason, wide: true },
               claim.closure_reason && { label: 'Closure', value: `${claim.closure_reason} · ${formatDateTime(claim.closed_at)}`, wide: true },
@@ -207,6 +262,7 @@ export function OverviewTab({ detail, reload }) {
         </SectionCard>
 
         <div className="space-y-5">
+          <SlaClocks clocks={detail.slaClocks} />
           <SectionCard title="Current task">
             {currentTask ? (
               <div className="space-y-1.5">
@@ -214,7 +270,7 @@ export function OverviewTab({ detail, reload }) {
                 <div className="flex flex-wrap items-center gap-2">
                   <StatusBadge value={currentTask.status} />
                   <PriorityBadge value={currentTask.priority} />
-                  {currentTask.is_mandatory && <span className="text-xs text-muted-foreground">Mandatory</span>}
+                  {currentTask.blocking && <span className="text-xs text-muted-foreground">Blocking</span>}
                 </div>
                 {currentTask.due_at && (
                   <p className={`flex items-center gap-1 text-xs ${new Date(currentTask.due_at) < new Date() ? 'font-medium text-red-700' : 'text-muted-foreground'}`}>
@@ -237,7 +293,7 @@ export function OverviewTab({ detail, reload }) {
                       <Select value={meta.priority} onValueChange={(priority) => setMeta((m) => ({ ...m, priority }))} options={PRIORITIES.map((p) => ({ value: p, label: humanize(p) }))} />
                     </FormField>
                     <FormField label="Due date">
-                      <Input type="datetime-local" value={meta.dueDate} onChange={(e) => setMeta((m) => ({ ...m, dueDate: e.target.value }))} />
+                      <Input type="datetime-local" min={toDateTimeLocal(new Date())} value={meta.dueDate} onChange={(e) => setMeta((m) => ({ ...m, dueDate: e.target.value }))} />
                     </FormField>
                     <Button size="sm" variant="outline" loading={action.pending} onClick={() => action.run(async () => { await claimsService.updateMeta(claim.id, { priority: meta.priority, dueDate: meta.dueDate ? new Date(meta.dueDate).toISOString() : null }); await reload() }, { success: 'Claim updated' })}>
                       Save
@@ -267,7 +323,7 @@ export function OverviewTab({ detail, reload }) {
         </div>
       </div>
 
-      {can('claims.verifyPolicy') && (INTAKE_STAGES.includes(claim.status) || claim.policy_verified !== null) && <IntakePanel detail={detail} reload={reload} />}
+      {can('claims.verifyCoverage') && (INTAKE_STAGES.includes(claim.status) || detail.coverage) && <IntakePanel detail={detail} reload={reload} />}
       <NotesPanel claimId={claim.id} />
 
       <ConfirmDialog

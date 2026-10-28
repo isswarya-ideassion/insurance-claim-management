@@ -14,7 +14,7 @@ export default function AdjusterDashboard() {
   const s = stats.data
   return (
     <MotionPage>
-      <PageHeader title="My assigned claims" description="Claims where you are the assigned adjuster. Open a claim and use the Investigation tab to record your assessment." />
+      <PageHeader title="My assigned claims" description="Claims where you are the assigned adjuster. Open a claim and use the Evaluation tab to record your evaluation and reserve." />
       <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label="Assigned claims" value={s ? s.total - s.closed - s.rejected : null} icon={Briefcase} tone="navy" index={0} />
         <KpiCard label="Under investigation" value={s?.underInvestigation} icon={FileSearch} tone="teal" index={1} />

@@ -47,7 +47,6 @@ export default defineConfig({
       'clsx',
       'tailwind-merge',
       'class-variance-authority',
-      '@supabase/supabase-js',
       '@radix-ui/react-alert-dialog',
       '@radix-ui/react-avatar',
       '@radix-ui/react-checkbox',

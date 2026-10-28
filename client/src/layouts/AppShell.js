@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import * as DialogPrimitive from '@radix-ui/react-dialog'
-import { Bell, ChevronDown, LogOut, Menu, Search, UserCog } from 'lucide-react'
+import { Bell, ChevronDown, LogOut, Menu, UserCog } from 'lucide-react'
 import { ROLE_LABELS } from '@shared/constants.js'
 import { useAuth } from '@/context/AuthContext.js'
 import { NAVIGATION, ROLE_HOME } from '@/constants/navigation.js'
@@ -10,7 +10,6 @@ import { ModeBanner } from '@/components/common/ModeBanner.js'
 import { ErrorBoundary } from '@/components/common/ErrorBoundary.js'
 import { Avatar } from '@/components/ui/misc.js'
 import { Button } from '@/components/ui/button.js'
-import { Input } from '@/components/ui/input.js'
 import { SheetContent } from '@/components/ui/dialog.js'
 import {
   DropdownMenu,
@@ -75,12 +74,11 @@ function NavList({ items, onNavigate }) {
 }
 
 export function AppShell() {
-  const { user, activeRole, setActiveRole, logout, can } = useAuth()
+  const { user, activeRole, setActiveRole, logout } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const [mobileOpen, setMobileOpen] = useState(false)
   const [unread, setUnread] = useState(0)
-  const [search, setSearch] = useState('')
   const items = NAVIGATION[activeRole] || []
 
   const refreshUnread = useCallback(() => {
@@ -97,21 +95,15 @@ export function AppShell() {
     }
   }, [refreshUnread])
 
-  useEffect(() => setMobileOpen(false), [location.pathname])
+  // The page scrolls inside <main>, not the window: start every new page at the top.
+  useEffect(() => {
+    setMobileOpen(false)
+    document.getElementById('main')?.scrollTo({ top: 0 })
+  }, [location.pathname])
 
   function switchRole(role) {
     setActiveRole(role)
     navigate(ROLE_HOME[role])
-  }
-
-  const staffSearch = can('claims.viewQueue')
-  const customerSearch = user?.roles.includes('CUSTOMER') && activeRole === 'CUSTOMER'
-  function submitSearch(e) {
-    e.preventDefault()
-    const q = search.trim()
-    if (!q) return
-    navigate(customerSearch ? `/customer/claims?search=${encodeURIComponent(q)}` : `/claims?search=${encodeURIComponent(q)}`)
-    setSearch('')
   }
 
   return (
@@ -138,18 +130,6 @@ export function AppShell() {
             <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setMobileOpen(true)} aria-label="Open navigation">
               <Menu />
             </Button>
-            {(staffSearch || customerSearch) && (
-              <form onSubmit={submitSearch} className="relative hidden max-w-md flex-1 sm:block" role="search">
-                <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-                <Input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder={customerSearch ? 'Search my claims…' : 'Search claim ID, claimant or policy number…'}
-                  aria-label="Search claims"
-                  className="pl-8"
-                />
-              </form>
-            )}
             <div className="ml-auto flex items-center gap-1.5">
               <Button variant="ghost" size="icon" asChild>
                 <Link to="/notifications" aria-label={`Notifications${unread ? `, ${unread} unread` : ''}`} className="relative">

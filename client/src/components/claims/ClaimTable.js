@@ -4,7 +4,7 @@ import { POLICY_TYPE_LABELS } from '@shared/constants.js'
 import { DataTable } from '@/components/common/DataTable.js'
 import { ClaimStatusBadge, PriorityBadge } from '@/components/common/StatusBadge.js'
 import { Tooltip } from '@/components/ui/misc.js'
-import { formatDate, formatMoney, formatRelative } from '@/utils/format.js'
+import { formatDateTime, formatMoney, formatRelative } from '@/utils/format.js'
 import { cn } from '@/lib/utils.js'
 
 export function ClaimTable({ rows, loading, error, onRetry, sort, onSortChange, variant = 'staff', empty, hideColumns = [] }) {
@@ -35,7 +35,7 @@ export function ClaimTable({ rows, loading, error, onRetry, sort, onSortChange, 
     },
     { key: 'customer_name', header: 'Claimant', cell: (c) => <span className="whitespace-nowrap">{c.customer_name || c.insured_name}</span> },
     { key: 'claim_type', header: 'Type', cell: (c) => POLICY_TYPE_LABELS[c.claim_type] || '—' },
-    { key: 'status', header: 'Status', sortable: true, cell: (c) => <ClaimStatusBadge status={c.status} /> },
+    { key: 'status', header: 'Status', sortable: true, cell: (c) => <div className="space-y-0.5"><ClaimStatusBadge status={c.status} />{c.stage_label && <div className="text-[11px] text-muted-foreground">{c.stage_label}{c.severity ? ` · ${c.severity.toLowerCase()}` : ''}</div>}</div> },
     { key: 'priority', header: 'Priority', sortable: true, cell: (c) => <PriorityBadge value={c.priority} /> },
     { key: 'estimated_loss', header: 'Est. loss', sortable: true, className: 'tabular text-right', headerClassName: 'text-right', cell: (c) => formatMoney(c.estimated_loss) },
     {
@@ -48,7 +48,7 @@ export function ClaimTable({ rows, loading, error, onRetry, sort, onSortChange, 
         </div>
       ),
     },
-    { key: 'submitted_at', header: 'Submitted', sortable: true, cell: (c) => <span className="whitespace-nowrap">{formatDate(c.submitted_at)}</span> },
+    { key: 'opened_at', header: 'Opened', sortable: true, cell: (c) => <span className="whitespace-nowrap">{formatDateTime(c.opened_at)}</span> },
     {
       key: 'due_date',
       header: 'Due',
@@ -76,10 +76,10 @@ export function ClaimTable({ rows, loading, error, onRetry, sort, onSortChange, 
       ),
     },
     { key: 'claim_type', header: 'Type', cell: (c) => POLICY_TYPE_LABELS[c.claim_type] || '—' },
-    { key: 'incident_category', header: 'Incident', cell: (c) => c.incident_category?.replaceAll('_', ' ').toLowerCase() || '—' },
+    { key: 'loss_type', header: 'Incident', cell: (c) => c.loss_type?.replaceAll('_', ' ').toLowerCase() || '—' },
     { key: 'status', header: 'Status', cell: (c) => <ClaimStatusBadge status={c.status} customer label={c.status_label} /> },
     { key: 'estimated_loss', header: 'Estimated loss', className: 'tabular', cell: (c) => formatMoney(c.estimated_loss) },
-    { key: 'submitted_at', header: 'Submitted', cell: (c) => (c.submitted_at ? formatDate(c.submitted_at) : 'Not submitted') },
+    { key: 'opened_at', header: 'Submitted', cell: (c) => <span className="whitespace-nowrap">{c.opened_at ? formatDateTime(c.opened_at) : 'Not submitted'}</span> },
     { key: 'updated_at', header: 'Last update', cell: (c) => formatRelative(c.updated_at) },
   ]
 

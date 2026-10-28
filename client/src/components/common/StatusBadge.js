@@ -56,6 +56,21 @@ const GENERIC_TONES = {
   ACTIVE: 'green',
   LAPSED: 'amber',
   EXPIRED: 'neutral',
+  MISSING: 'amber',
+  REQUESTED: 'navy',
+  RECEIVED: 'teal',
+  WAIVED: 'violet',
+  POSTED: 'green',
+  MODIFIED: 'violet',
+  RUNNING: 'teal',
+  PARTIAL: 'amber',
+  LINKED: 'green',
+  UNVERIFIED: 'amber',
+  VERIFIED: 'green',
+  RECOVERED: 'green',
+  WRITTEN_OFF: 'neutral',
+  CONFIRMED: 'red',
+  DISMISSED: 'neutral',
 }
 
 export function ClaimStatusBadge({ status, customer = false, label }) {

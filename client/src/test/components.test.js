@@ -7,7 +7,7 @@ import { ConfirmDialog } from '@/components/common/ConfirmDialog.js'
 import { ErrorBoundary } from '@/components/common/ErrorBoundary.js'
 import { claimFormSchema, toDraftPayload, stepForField } from '@/schemas/claimSchemas.js'
 
-const authState = { status: 'authenticated', user: { roles: ['CLAIMS_ADJUSTER'] }, activeRole: 'CLAIMS_ADJUSTER' }
+const authState = { status: 'authenticated', user: { roles: ['ADJUSTER'] }, activeRole: 'ADJUSTER' }
 vi.mock('@/context/AuthContext.js', () => ({ useAuth: () => authState }))
 const { ProtectedRoute, RoleHomeRedirect } = await import('@/routes/guards.js')
 
@@ -27,12 +27,12 @@ function renderAt(path, element) {
 
 describe('route guards', () => {
   it('redirects users without a permitted role to /unauthorized', () => {
-    renderAt('/secure', <ProtectedRoute roles={['CLAIMS_MANAGER']}><p>secret</p></ProtectedRoute>)
+    renderAt('/secure', <ProtectedRoute roles={['OPS_MANAGER']}><p>secret</p></ProtectedRoute>)
     expect(screen.getByText('unauthorized page')).toBeInTheDocument()
   })
 
   it('renders content for a permitted role', () => {
-    renderAt('/secure', <ProtectedRoute roles={['CLAIMS_ADJUSTER']}><p>secret</p></ProtectedRoute>)
+    renderAt('/secure', <ProtectedRoute roles={['ADJUSTER']}><p>secret</p></ProtectedRoute>)
     expect(screen.getByText('secret')).toBeInTheDocument()
   })
 
@@ -59,7 +59,7 @@ describe('status badges', () => {
 
   it('shows full labels to staff', () => {
     render(<ClaimStatusBadge status="RESERVE_APPROVAL" />)
-    expect(screen.getByText('Reserve Approval')).toBeInTheDocument()
+    expect(screen.getByText('Reserve Review')).toBeInTheDocument()
   })
 })
 
@@ -108,35 +108,68 @@ describe('claim form schema', () => {
     const result = claimFormSchema.safeParse({
       policyNumber: 'HP-1',
       insuredName: 'A B',
-      incidentAt: '2026-01-01T10:00',
-      incidentLocation: 'Somewhere',
-      incidentCategory: 'THEFT',
-      incidentDescription: 'short',
+      lossDate: '2026-01-01T10:00',
+      lossLocation: 'Somewhere',
+      lossCity: 'Kochi',
+      lossCountry: 'India',
+      lossType: 'THEFT',
+      lossDescription: 'short',
       estimatedLoss: 100,
       affectedAsset: 'Car',
       contactName: 'A B',
-      contactPhone: '+1 555 0100',
+      contactPhone: '98765 43210',
       contactEmail: 'a@b.test',
       declarationAccepted: false,
     })
     const fields = result.error.issues.map((i) => i.path[0])
-    expect(fields).toEqual(expect.arrayContaining(['incidentDescription', 'declarationAccepted']))
+    expect(fields).toEqual(expect.arrayContaining(['lossDescription', 'declarationAccepted']))
   })
 
-  it('rejects future incident dates', () => {
+  it('rejects future loss dates', () => {
     const future = new Date(Date.now() + 86400000).toISOString().slice(0, 16)
-    const r = claimFormSchema.shape.incidentAt.safeParse(future)
+    const r = claimFormSchema.shape.lossDate.safeParse(future)
     expect(r.success).toBe(false)
   })
 
   it('converts empty values to null for draft saves', () => {
-    const payload = toDraftPayload({ policyNumber: 'HP-1', incidentAt: '', estimatedLoss: '', contactEmail: '' }, 2)
-    expect(payload).toMatchObject({ policyNumber: 'HP-1', incidentAt: null, estimatedLoss: null, contactEmail: null, draftStep: 2 })
+    const payload = toDraftPayload({ policyNumber: 'HP-1', lossDate: '', estimatedLoss: '', contactEmail: '' }, 2)
+    expect(payload).toMatchObject({ policyNumber: 'HP-1', lossDate: null, estimatedLoss: null, contactEmail: null, draftStep: 2 })
   })
 
   it('maps server field errors back to wizard steps', () => {
-    expect(stepForField('incidentDescription')).toBe(2)
+    expect(stepForField('lossDescription')).toBe(2)
+    expect(stepForField('lossCity')).toBe(2)
     expect(stepForField('contactEmail')).toBe(5)
+  })
+
+  it('accepts only Indian mobile numbers and sends them as +91 XXXXX XXXXX', () => {
+    const phone = claimFormSchema.shape.contactPhone
+    expect(phone.safeParse('98765 43210').success).toBe(true)
+    expect(phone.safeParse('+1 555 0100').success).toBe(false)
+    expect(phone.safeParse('12345 67890').success).toBe(false)
+    expect(toDraftPayload({ contactPhone: '98765 43210' }, 5).contactPhone).toBe('+91 98765 43210')
+    expect(toDraftPayload({ contactPhone: '98765' }, 5).contactPhone).toBeNull()
+  })
+
+  it('requires the loss city and country, and never sends the insured name', () => {
+    const r = claimFormSchema.safeParse({})
+    expect(r.error.issues.map((i) => i.path[0])).toEqual(expect.arrayContaining(['lossCity', 'lossCountry']))
+    expect(toDraftPayload({ insuredName: 'Someone Else' }, 1)).not.toHaveProperty('insuredName')
+  })
+})
+
+describe('phone input and claim filters', () => {
+  it('keeps ten digits, dropping a pasted +91 or leading zero', async () => {
+    const { formatLocalMobile } = await import('@/components/common/PhoneInput.js')
+    expect(formatLocalMobile('+91 98765-43210')).toBe('98765 43210')
+    expect(formatLocalMobile('098765432109')).toBe('98765 43210')
+    expect(formatLocalMobile('987ab65')).toBe('98765')
+  })
+
+  it('turns a "submitted in" window into a from-date', async () => {
+    const { submittedSince } = await import('@/pages/customer/MyClaimsPage.js')
+    expect(submittedSince('30', new Date(2026, 9, 27, 12))).toBe('2026-09-27')
+    expect(submittedSince('')).toBeUndefined()
   })
 })
 
@@ -172,5 +205,38 @@ describe('ErrorBoundary', () => {
     )
     expect(screen.getByRole('alert')).toHaveTextContent('This page could not be loaded')
     console.error.mockRestore()
+  })
+})
+
+const { evaluationNotice } = await import('@/components/claims/workspace/InvestigationTab.js')
+
+describe('evaluation tab notice', () => {
+  const claim = (status, extra = {}) => ({ status, assigned_adjuster_name: null, ...extra })
+
+  it('explains that evaluation has not started before investigation', () => {
+    const n = evaluationNotice({ claim: claim('DOCUMENT_REVIEW'), rows: [], isAssignedAdjuster: false })
+    expect(n.title).toBe('Evaluation not started yet')
+    expect(n.description).toContain('Document Review')
+    expect(n.description).toContain('No adjuster is assigned yet.')
+  })
+
+  it('names the adjuster while investigation is under way', () => {
+    const n = evaluationNotice({ claim: claim('INVESTIGATION', { assigned_adjuster_name: 'Adam Brooks' }), rows: [], isAssignedAdjuster: false })
+    expect(n.description).toContain('Adam Brooks')
+  })
+
+  it('stays out of the way when the editor or evaluations are shown', () => {
+    expect(evaluationNotice({ claim: claim('INVESTIGATION'), rows: [], isAssignedAdjuster: true })).toBeNull()
+    expect(evaluationNotice({ claim: claim('COMPLIANCE_REVIEW'), rows: [{ status: 'SUBMITTED' }], isAssignedAdjuster: false })).toBeNull()
+  })
+
+  it('tells the adjuster a paused draft is kept', () => {
+    const n = evaluationNotice({ claim: claim('DOCUMENTS_REQUIRED'), rows: [{ status: 'DRAFT', version_no: 2 }], isAssignedAdjuster: true })
+    expect(n.title).toBe('Draft v2 saved')
+  })
+
+  it('covers holds and claims ended before evaluation', () => {
+    expect(evaluationNotice({ claim: claim('ON_HOLD', { hold_from_status: 'INVESTIGATION' }), rows: [], isAssignedAdjuster: false }).description).toContain('during Investigation')
+    expect(evaluationNotice({ claim: claim('REJECTED'), rows: [], isAssignedAdjuster: false }).description).toBe('The claim was denied before it reached evaluation.')
   })
 })

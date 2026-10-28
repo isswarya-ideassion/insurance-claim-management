@@ -1,14 +1,15 @@
 import {
   ROLES,
   DOCUMENT_STAGE_STATUSES,
-  COMPLIANCE_STAGE_STATUSES,
   PAYMENT_STAGE_STATUSES,
   STAFF_ROLES,
 } from '../../../shared/constants.js'
 import { can, canSeeTab, hasAnyRole } from '../../../shared/permissions.js'
 import { forbidden, notFound } from '../utils/errors.js'
 
-const FULL_SCOPE_ROLES = [ROLES.CLAIMS_OPERATIONS, ROLES.CLAIMS_MANAGER, ROLES.AUDITOR]
+// Roles that may read every submitted claim. Data engineers see claim headers
+// only: the claim tabs and child-record permissions keep the rest from them.
+const FULL_SCOPE_ROLES = [ROLES.CLAIMS_OPS_MANAGER, ROLES.OPS_MANAGER, ROLES.COMPLIANCE_SECURITY, ROLES.DATA_ENGINEER]
 
 async function distinctClaimIds(t, sql, params) {
   const rows = await t.query(sql, params)
@@ -23,7 +24,7 @@ async function distinctClaimIds(t, sql, params) {
 export async function claimScope(t, user) {
   const roles = user.roles
   const branches = []
-  if (roles.includes(ROLES.CUSTOMER)) branches.push({ customer_id: user.id })
+  if (roles.includes(ROLES.CLIENT)) branches.push({ customer_id: user.id })
 
   const staff = []
   if (hasAnyRole(roles, FULL_SCOPE_ROLES)) {
@@ -32,7 +33,7 @@ export async function claimScope(t, user) {
     if (roles.includes(ROLES.DOCUMENT_REVIEWER)) {
       staff.push({ status: { in: DOCUMENT_STAGE_STATUSES } }, { assigned_reviewer_id: user.id })
     }
-    if (roles.includes(ROLES.CLAIMS_ADJUSTER)) {
+    if (roles.includes(ROLES.ADJUSTER)) {
       const ids = await distinctClaimIds(
         t,
         `select distinct claim_id from public.claim_assignments where assignee_id = $1 and assignment_role = 'ADJUSTER'`,
@@ -40,11 +41,7 @@ export async function claimScope(t, user) {
       )
       staff.push({ id: { in: ids } })
     }
-    if (roles.includes(ROLES.COMPLIANCE_OFFICER)) {
-      const ids = await distinctClaimIds(t, 'select distinct claim_id from public.compliance_reviews', [])
-      staff.push({ status: { in: COMPLIANCE_STAGE_STATUSES } }, { id: { in: ids } })
-    }
-    if (roles.includes(ROLES.PAYMENT_OPERATIONS)) {
+    if (roles.includes(ROLES.PAYMENT_OPERATOR)) {
       const ids = await distinctClaimIds(t, 'select distinct claim_id from public.payments', [])
       staff.push({ status: { in: PAYMENT_STAGE_STATUSES } }, { id: { in: ids } })
     }

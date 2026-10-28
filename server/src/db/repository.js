@@ -14,8 +14,7 @@ function serialise(table, row) {
 }
 
 /**
- * Small data-access layer shared by the Supabase (node-postgres) and mock
- * (PGlite) executors. `executor` must provide query(text, params) -> { rows }
+ * Small data-access layer over the node-postgres executor. `executor` must provide query(text, params) -> { rows }
  * and transaction(fn) where fn receives a transaction-scoped executor.
  */
 export function createRepository(executor, { inTransaction = false, afterCommit = null } = {}) {

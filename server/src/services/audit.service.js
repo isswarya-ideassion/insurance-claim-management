@@ -1,4 +1,4 @@
-const REDACTED_FIELDS = ['beneficiary_account', 'payout_account_number', 'encrypted_password']
+const REDACTED_FIELDS = ['bank_details_encrypted', 'bank_details_hash', 'contact_encrypted', 'encrypted_password']
 
 function redact(row) {
   if (!row || typeof row !== 'object') return row ?? null
@@ -15,7 +15,7 @@ function diff(before, after) {
   const b = {}
   const a = {}
   for (const key of Object.keys(after)) {
-    if (key === 'updated_at') continue
+    if (key === 'updated_at' || key === 'version') continue
     if (JSON.stringify(before[key]) !== JSON.stringify(after[key])) {
       b[key] = before[key]
       a[key] = after[key]
@@ -25,22 +25,24 @@ function diff(before, after) {
 }
 
 /**
- * Appends an immutable audit record. Must be called with the same transaction
- * handle as the change it describes so both commit or roll back together.
+ * Appends an audit record (hash-chained by the database). Must be called with
+ * the same transaction handle as the change it describes so both commit or
+ * roll back together. actor.type is USER, AGENT (Claude agent service) or SYSTEM.
  */
 export async function recordAudit(t, actor, { action, entityType, entityId = null, claimId = null, before, after, metadata }) {
   const changes = diff(before, after)
   return t.insert('audit_logs', {
     actor_id: actor?.id || null,
+    actor_type: actor?.type || (actor?.id ? 'USER' : 'SYSTEM'),
     actor_roles: actor?.roles || [],
     action,
     entity_type: entityType,
     entity_id: entityId,
     claim_id: claimId,
-    before_data: changes.before,
-    after_data: changes.after,
+    before: changes.before,
+    after: changes.after,
     metadata: metadata || {},
     request_id: actor?.requestId || null,
-    ip_address: actor?.ip || null,
+    ip: actor?.ip || null,
   })
 }

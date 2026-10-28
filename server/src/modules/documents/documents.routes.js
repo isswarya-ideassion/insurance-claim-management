@@ -3,10 +3,10 @@ import { validate } from '../../middleware/validate.js'
 import { uploadSingle } from '../../middleware/upload.js'
 import * as controller from './documents.controller.js'
 import {
+  artifactRequestSchema,
   assignReviewerSchema,
   downloadQuery,
   idParams,
-  informationRequestSchema,
   listRequestsQuery,
   respondSchema,
   reviewQueueQuery,
@@ -25,11 +25,12 @@ export function documentsRoutes() {
   router.post('/documents/:id/review', validate({ params: idParams, body: reviewSchema }), controller.review)
   router.post('/documents/:id/assign-reviewer', validate({ params: idParams, body: assignReviewerSchema }), controller.assignReviewer)
 
-  router.get('/claims/:id/information-requests', byId, controller.listClaimRequests)
-  router.post('/claims/:id/information-requests', validate({ params: idParams, body: informationRequestSchema }), controller.createRequest)
-  router.get('/information-requests', validate({ query: listRequestsQuery }), controller.listRequests)
-  router.post('/information-requests/:id/respond', validate({ params: idParams, body: respondSchema }), controller.respond)
-  router.post('/information-requests/:id/close', byId, controller.closeRequest)
+  // Artifact requirements (PRD 3.4): required artifacts per claim and requests to the client.
+  router.get('/claims/:id/artifact-requirements', byId, controller.listClaimRequirements)
+  router.post('/claims/:id/artifact-requests', validate({ params: idParams, body: artifactRequestSchema }), controller.createRequest)
+  router.get('/artifact-requests', validate({ query: listRequestsQuery }), controller.listRequests)
+  router.post('/artifact-requests/:id/respond', validate({ params: idParams, body: respondSchema }), controller.respond)
+  router.post('/artifact-requests/:id/close', byId, controller.closeRequest)
 
   return router
 }

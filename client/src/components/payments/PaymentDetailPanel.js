@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Eye, FlaskConical, Landmark, Pencil, PlayCircle, RefreshCw, ShieldAlert } from 'lucide-react'
+import { BadgeCheck, Eye, FlaskConical, Landmark, Pencil, PlayCircle, RefreshCw, ShieldAlert } from 'lucide-react'
 import { toast } from 'sonner'
 import { paymentsService } from '@/services/workflowService.js'
 import { useApiQuery, useAction } from '@/hooks/useApi.js'
@@ -13,7 +13,8 @@ import { DataTable } from '@/components/common/DataTable.js'
 import { Button } from '@/components/ui/button.js'
 import { Input, Textarea } from '@/components/ui/input.js'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog.js'
-import { formatDateTime, formatMoney } from '@/utils/format.js'
+import { StepsSummary } from '@/components/claims/workspace/FinancialTabs.js'
+import { formatDateTime, formatMoney, humanize } from '@/utils/format.js'
 
 const newKey = () => `pay-${crypto.randomUUID()}`
 
@@ -29,7 +30,7 @@ export function SimulatedNotice() {
 }
 
 export function PaymentDetailPanel({ paymentId, onChanged }) {
-  const { can } = useAuth()
+  const { can, user } = useAuth()
   const query = useApiQuery(() => paymentsService.get(paymentId), [paymentId])
   const action = useAction()
   const attemptKey = useRef(newKey())
@@ -39,19 +40,21 @@ export function PaymentDetailPanel({ paymentId, onChanged }) {
   const [revealed, setRevealed] = useState(null)
   const [benForm, setBenForm] = useState({})
   const [reconRef, setReconRef] = useState('')
+  const [resolveOpen, setResolveOpen] = useState(false)
+  const [resolution, setResolution] = useState('')
 
   const refresh = async () => {
     await query.reload()
     onChanged?.()
   }
 
-  async function processPayment() {
-    const res = await action.run(() => paymentsService.process(paymentId, attemptKey.current))
+  async function issuePayment() {
+    const res = await action.run(() => paymentsService.issue(paymentId, attemptKey.current))
     if (!res) return false
     attemptKey.current = newKey()
     const payment = res.data.payment
     if (res.meta?.replayed) toast.info('This attempt was already processed; showing the recorded result.')
-    else if (payment.status === 'PAID') toast.success(`Simulated payment completed: ${payment.transaction_reference}`)
+    else if (payment.status === 'PAID') toast.success(`Simulated payment completed: ${payment.portal_reference}`)
     else toast.error(`Simulated payment failed: ${res.data.attempt.failure_reason}`)
     await refresh()
     return true
@@ -61,33 +64,40 @@ export function PaymentDetailPanel({ paymentId, onChanged }) {
     <QueryState query={query}>
       {(d) => {
         const p = d.payment
-        const canProcess = can('payments.process')
+        const canIssue = d.canIssue
+        const openBlocks = d.blocks.filter((b) => !b.resolved_at)
+        const payee = d.payee
         return (
           <div className="space-y-5">
             {p.is_simulated && <SimulatedNotice />}
             {d.complianceHold && (
               <p className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
-                <ShieldAlert className="size-4" /> An active compliance hold blocks payment processing.
+                <ShieldAlert className="size-4" /> An active compliance hold blocks payment.
+              </p>
+            )}
+            {can('payments.issue') && !canIssue && p.status === 'PENDING' && (
+              <p className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                <ShieldAlert className="size-4" /> You approved this settlement, so another Payment Operator must issue it (separation of duties).
               </p>
             )}
             <SectionCard
               title="Payment request"
               actions={
                 <>
-                  {canProcess && p.status === 'PENDING' && (
-                    <Button size="sm" variant="accent" onClick={() => setConfirmProcess(true)} disabled={d.complianceHold || d.claim.status !== 'PAYMENT_PENDING'}>
-                      <PlayCircle /> Process payment
+                  {canIssue && p.status === 'PENDING' && (
+                    <Button size="sm" variant="accent" onClick={() => setConfirmProcess(true)} disabled={d.complianceHold || openBlocks.length > 0 || d.claim.status !== 'PAYMENT_PENDING'}>
+                      <PlayCircle /> Issue payment
                     </Button>
                   )}
-                  {canProcess && p.status === 'FAILED' && (
-                    <>
-                      <Button size="sm" variant="outline" onClick={() => { setBenForm({ beneficiaryName: p.beneficiary_name, beneficiaryBank: p.beneficiary_bank || '', beneficiaryAccount: '', reason: '' }); setBeneficiaryOpen(true) }}>
-                        <Pencil /> Update beneficiary
-                      </Button>
-                      <Button size="sm" variant="accent" loading={action.pending} onClick={() => action.run(async () => { await paymentsService.retry(paymentId, 'Retry requested by payment operations'); await refresh() }, { success: 'Payment queued for retry' })}>
-                        <RefreshCw /> Queue retry
-                      </Button>
-                    </>
+                  {can('payees.manage') && ['FAILED', 'PENDING', 'PENDING_APPROVAL'].includes(p.status) && (
+                    <Button size="sm" variant="outline" onClick={() => { setBenForm({ beneficiaryName: p.payee_name, beneficiaryBank: p.payee_bank || '', beneficiaryAccount: '', reason: '' }); setBeneficiaryOpen(true) }}>
+                      <Pencil /> Update payee
+                    </Button>
+                  )}
+                  {can('payments.issue') && p.status === 'FAILED' && (
+                    <Button size="sm" variant="accent" onClick={() => { setResolution(''); setResolveOpen(true) }}>
+                      <RefreshCw /> Resolve & requeue
+                    </Button>
                   )}
                   {can('payments.reconcile') && p.status === 'PAID' && (
                     <Button size="sm" variant="outline" onClick={() => { setReconRef(''); setReconcileOpen(true) }}>
@@ -106,32 +116,65 @@ export function PaymentDetailPanel({ paymentId, onChanged }) {
                   { label: 'Claim status', value: <ClaimStatusBadge status={d.claim.status} /> },
                   { label: 'Claimant', value: d.claim.customer_name },
                   { label: 'Provider', value: `${p.provider}${p.is_simulated ? ' (simulated)' : ''}` },
-                  { label: 'Transaction reference', value: p.transaction_reference || '—' },
-                  { label: 'Paid at', value: formatDateTime(p.paid_at) },
+                  { label: 'Payment method', value: humanize(p.method) || '—' },
+                  { label: 'Portal reference', value: p.portal_reference || '—' },
+                  { label: 'Issued at', value: formatDateTime(p.issued_at) },
                   { label: 'Attempts', value: p.attempt_count },
                   p.last_failure_reason && { label: 'Last failure', value: <span className="text-red-700">{p.last_failure_reason}</span>, wide: true },
-                  p.reconciled_at && { label: 'Reconciled', value: `${formatDateTime(p.reconciled_at)} by ${p.reconciled_by_name} (${p.reconciliation_reference})`, wide: true },
+                  p.cleared_at && { label: 'Reconciled', value: `${formatDateTime(p.cleared_at)} by ${p.reconciled_by_name} (${p.reconciliation_reference})`, wide: true },
                 ]}
               />
             </SectionCard>
 
+            {openBlocks.length > 0 && (
+              <SectionCard title="Open payment blocks" description="A payment cannot be issued while any block is open.">
+                <ul className="space-y-2 text-sm">
+                  {openBlocks.map((b) => (
+                    <li key={b.id} className="rounded-md border border-red-200 bg-red-50 p-3 text-red-900">
+                      <p className="font-medium">{humanize(b.block_type)}</p>
+                      {b.detail && <p className="text-xs">{b.detail}</p>}
+                      <p className="text-xs text-red-800/80">Opened {formatDateTime(b.opened_at)}{b.opened_by_name ? ` by ${b.opened_by_name}` : ''}</p>
+                    </li>
+                  ))}
+                </ul>
+              </SectionCard>
+            )}
+
             <SectionCard
-              title="Beneficiary"
-              description="Account numbers are masked. Full details are shown only to payment operations and every reveal is audited."
+              title="Payee"
+              description="Bank details are encrypted at rest and masked here. Full details are shown only to Payment Operators and every reveal is audited."
               actions={
-                d.canViewBeneficiary && !revealed && (
-                  <Button size="sm" variant="outline" onClick={() => action.run(async () => setRevealed(await paymentsService.beneficiary(paymentId)))}>
-                    <Eye /> Reveal details
-                  </Button>
-                )
+                <>
+                  {can('payees.manage') && payee && payee.verification_status !== 'VERIFIED' && (
+                    <Button
+                      size="sm"
+                      variant="accent"
+                      disabled={payee.bank_details_changed_by === user.id}
+                      title={payee.bank_details_changed_by === user.id ? 'Bank details you changed must be verified by another Payment Operator' : undefined}
+                      loading={action.pending}
+                      onClick={() => action.run(async () => { await paymentsService.verifyPayee(payee.id); await refresh() }, { success: 'Payee verified' })}
+                    >
+                      <BadgeCheck /> Verify payee
+                    </Button>
+                  )}
+                  {d.canViewBeneficiary && !revealed && (
+                    <Button size="sm" variant="outline" onClick={() => action.run(async () => setRevealed(await paymentsService.beneficiary(paymentId)))}>
+                      <Eye /> Reveal details
+                    </Button>
+                  )}
+                </>
               }
             >
               <KeyValue
                 columns={3}
                 items={[
-                  { label: 'Name', value: revealed?.beneficiaryName || p.beneficiary_name },
-                  { label: 'Bank', value: revealed?.beneficiaryBank || p.beneficiary_bank },
-                  { label: 'Account', value: <span className="font-mono">{revealed?.beneficiaryAccount || p.beneficiary_account_masked}</span> },
+                  { label: 'Name', value: revealed?.beneficiaryName || p.payee_name },
+                  { label: 'Bank', value: revealed?.beneficiaryBank || p.payee_bank },
+                  { label: 'Account', value: <span className="font-mono">{revealed?.beneficiaryAccount || p.payee_account_masked}</span> },
+                  payee && { label: 'Verification', value: <StatusBadge value={payee.verification_status} /> },
+                  payee?.verified_at && { label: 'Verified', value: `${formatDateTime(payee.verified_at)} by ${payee.verified_by_name}` },
+                  payee?.bank_details_changed_at && { label: 'Details changed', value: `${formatDateTime(payee.bank_details_changed_at)} by ${payee.bank_details_changed_by_name}` },
+                  payee?.duplicate_payees?.length > 0 && { label: 'Same account as', value: <span className="text-amber-700">{payee.duplicate_payees.map((x) => x.name).join(', ')}</span>, wide: true },
                 ]}
               />
             </SectionCard>
@@ -140,9 +183,10 @@ export function PaymentDetailPanel({ paymentId, onChanged }) {
               <KeyValue
                 columns={3}
                 items={[
-                  { label: 'Approved amount', value: formatMoney(d.settlement?.amount) },
+                  { label: 'Prepared by', value: p.requested_by_name },
                   { label: 'Approved by', value: d.approval?.decided_by_name },
                   { label: 'Decided', value: formatDateTime(d.approval?.decided_at) },
+                  { label: 'Approval steps', value: <StepsSummary steps={d.steps} />, wide: true },
                 ]}
               />
             </SectionCard>
@@ -165,20 +209,50 @@ export function PaymentDetailPanel({ paymentId, onChanged }) {
             <ConfirmDialog
               open={confirmProcess}
               onOpenChange={setConfirmProcess}
-              title="Process payment?"
-              description={`Send ${formatMoney(p.amount)} to ${p.beneficiary_name} (${p.beneficiary_account_masked}) through the ${p.provider.toLowerCase()} adapter. Repeated clicks reuse the same idempotency key, so the payment is processed at most once.`}
-              confirmLabel="Process payment"
-              onConfirm={processPayment}
+              title="Issue payment?"
+              description={`Send ${formatMoney(p.amount)} to ${p.payee_name} (${p.payee_account_masked}) through the ${p.provider.toLowerCase()} adapter. Repeated clicks reuse the same idempotency key, so the payment is issued at most once.`}
+              confirmLabel="Issue payment"
+              onConfirm={issuePayment}
             />
+
+            <Dialog open={resolveOpen} onOpenChange={setResolveOpen}>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Resolve failure & requeue</DialogTitle>
+                  <DialogDescription>Record how the failure was resolved. Other blocks (payee verification, bank-detail changes, compliance holds) must be cleared first.</DialogDescription>
+                </DialogHeader>
+                <FormField label="Resolution" required>
+                  <Textarea value={resolution} onChange={(e) => setResolution(e.target.value)} placeholder="e.g. Claimant confirmed the corrected account number by phone." />
+                </FormField>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setResolveOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button
+                    loading={action.pending}
+                    disabled={resolution.trim().length < 5}
+                    onClick={async () => {
+                      const ok = await action.run(() => paymentsService.resolveBlock(paymentId, resolution), { success: 'Payment queued again' })
+                      if (ok) {
+                        setResolveOpen(false)
+                        refresh()
+                      }
+                    }}
+                  >
+                    Requeue payment
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
 
             <Dialog open={beneficiaryOpen} onOpenChange={setBeneficiaryOpen}>
               <DialogContent>
                 <DialogHeader>
-                  <DialogTitle>Update beneficiary details</DialogTitle>
-                  <DialogDescription>Changes are audited. Confirm new details directly with the claimant before saving.</DialogDescription>
+                  <DialogTitle>Update payee bank details</DialogTitle>
+                  <DialogDescription>Changes are audited and encrypted. The payee becomes unverified and the payment is blocked until another Payment Operator verifies it.</DialogDescription>
                 </DialogHeader>
                 <div className="space-y-3">
-                  <FormField label="Beneficiary name" required>
+                  <FormField label="Payee name" required>
                     <Input value={benForm.beneficiaryName || ''} onChange={(e) => setBenForm((f) => ({ ...f, beneficiaryName: e.target.value }))} />
                   </FormField>
                   <FormField label="Bank">
@@ -199,7 +273,7 @@ export function PaymentDetailPanel({ paymentId, onChanged }) {
                     loading={action.pending}
                     disabled={!benForm.beneficiaryName || (benForm.beneficiaryAccount || '').length < 6 || (benForm.reason || '').trim().length < 5}
                     onClick={async () => {
-                      const ok = await action.run(() => paymentsService.updateBeneficiary(paymentId, { ...benForm, beneficiaryBank: benForm.beneficiaryBank || null }), { success: 'Beneficiary updated' })
+                      const ok = await action.run(() => paymentsService.updateBeneficiary(paymentId, { ...benForm, beneficiaryBank: benForm.beneficiaryBank || null }), { success: 'Payee details updated; verification required' })
                       if (ok) {
                         setBeneficiaryOpen(false)
                         setRevealed(null)

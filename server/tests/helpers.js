@@ -1,30 +1,36 @@
-import { mkdtempSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import path from 'node:path'
-import { randomUUID } from 'node:crypto'
+import { randomBytes, randomUUID } from 'node:crypto'
+import pg from 'pg'
 import request from 'supertest'
+import { inject } from 'vitest'
 import { loadConfig } from '../src/config/env.js'
 import { createDependencies } from '../src/services/container.js'
 import { createApp } from '../src/app.js'
 import { DEMO_DOMAIN } from '../src/seed/demoData.js'
 import { buildSamplePdf } from '../src/seed/samplePdf.js'
+import { PASSWORD, TEST_SETTINGS, adminUrl, databaseUrl } from './test-db.js'
 
-export const PASSWORD = 'Test-Password-123'
+export { PASSWORD }
 
-/** Boots the API in mock mode with a fresh in-memory database seeded with demo data. */
+async function withAdmin(fn) {
+  const client = new pg.Client({ connectionString: adminUrl() })
+  await client.connect()
+  try {
+    return await fn(client)
+  } finally {
+    await client.end()
+  }
+}
+
+/**
+ * Boots the real API on a private PostgreSQL database cloned from the
+ * migrated and seeded template built by tests/global-setup.js.
+ */
 export async function createTestContext() {
-  const dataDir = mkdtempSync(path.join(tmpdir(), 'harborpoint-test-'))
-  const config = loadConfig({
-    NODE_ENV: 'test',
-    DATA_MODE: 'mock',
-    MOCK_DB_PERSISTENCE: 'memory',
-    MOCK_DATA_DIR: dataDir,
-    MOCK_AUTH_SECRET: 'test-only-secret-value-0123456789',
-    MOCK_DEMO_PASSWORD: PASSWORD,
-    EMAIL_ADAPTER: 'console',
-    OVERDUE_SWEEP_MINUTES: '0',
-  })
-  const deps = await createDependencies(config)
+  const template = inject('templateDatabase')
+  const name = `${template}_${randomBytes(4).toString('hex')}`
+  await withAdmin((c) => c.query(`create database ${name} template ${template}`))
+  const config = loadConfig({ ...TEST_SETTINGS, DATABASE_URL: databaseUrl(name), DB_MIGRATE_ON_START: 'false' })
+  const deps = await createDependencies(config, { seed: false })
   const sentEmails = []
   const originalSend = deps.email.send
   deps.email.send = async (message) => {
@@ -37,7 +43,7 @@ export async function createTestContext() {
   async function login(who) {
     if (tokens[who]) return tokens[who]
     const email = who.includes('@') ? who : `${who}@${DEMO_DOMAIN}`
-    const res = await request(app).post('/api/v1/auth/mock/login').send({ email, password: PASSWORD })
+    const res = await request(app).post('/api/v1/auth/login').send({ email, password: PASSWORD })
     if (res.status !== 200) throw new Error(`login failed for ${who}: ${res.status} ${JSON.stringify(res.body)}`)
     tokens[who] = res.body.data.accessToken
     return tokens[who]
@@ -53,6 +59,7 @@ export async function createTestContext() {
       get: async (url) => (await build('get', url)).req,
       post: async (url, body = {}, headers = {}) => (await build('post', url)).req.set(headers).send(body),
       patch: async (url, body = {}) => (await build('patch', url)).req.send(body),
+      put: async (url, body = {}) => (await build('put', url)).req.send(body),
       delete: async (url) => (await build('delete', url)).req,
       upload: async (url, { buffer, filename, fields = {} }) => {
         const { req } = await build('post', url)
@@ -67,11 +74,16 @@ export async function createTestContext() {
   }
 
   async function userId(who) {
-    const profile = await deps.db.findOne('profiles', { email: `${who}@${DEMO_DOMAIN}` })
+    const profile = await deps.db.findOne('users', { email: `${who}@${DEMO_DOMAIN}` })
     return profile.id
   }
 
-  return { app, deps, db: deps.db, login, as, claimByNumber, userId, sentEmails, close: () => deps.db.close() }
+  async function close() {
+    await deps.db.close()
+    await withAdmin((c) => c.query(`drop database if exists ${name} with (force)`))
+  }
+
+  return { app, deps, db: deps.db, login, as, claimByNumber, userId, sentEmails, close }
 }
 
 export const samplePdf = (label = 'test') => buildSamplePdf(['Test document', label])
@@ -84,14 +96,16 @@ export function uniqueKey() {
 export function completeDraft(policyNumber, overrides = {}) {
   return {
     policyNumber,
-    incidentAt: new Date(Date.now() - 3 * 86_400_000).toISOString(),
-    incidentLocation: '1 Test Street, Testville',
-    incidentCategory: 'COLLISION',
-    incidentDescription: 'Rear-ended at a traffic light by another vehicle; bumper damaged.',
+    lossDate: new Date(Date.now() - 3 * 86_400_000).toISOString(),
+    lossLocation: '12 MG Road, near the metro station',
+    lossCity: 'Bengaluru',
+    lossCountry: 'India',
+    lossType: 'COLLISION',
+    lossDescription: 'Rear-ended at a traffic light by another vehicle; bumper damaged.',
     estimatedLoss: 2500,
     affectedAsset: 'Test vehicle',
     contactName: 'Alice Thornton',
-    contactPhone: '+1 555 0101',
+    contactPhone: '+91 98450 10101',
     contactEmail: 'alice@example.test',
     declarationAccepted: true,
     ...overrides,

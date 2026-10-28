@@ -5,8 +5,8 @@ export default function SettlementApprovalsPage() {
   return (
     <ApprovalQueue
       kind="settlement"
-      title="Settlement approval queue"
-      description="Compliance-cleared settlements. Approving creates the payment request for payment operations."
+      title="Settlement approvals"
+      description="Compliance-cleared settlements awaiting approval. The assigned adjuster approves within their settlement authority; larger amounts route to a Claims Manager. A Payment Operator then issues the payment."
       load={approvalsService.settlementQueue}
       decide={approvalsService.decideSettlement}
     />

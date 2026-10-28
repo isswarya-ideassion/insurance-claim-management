@@ -36,17 +36,17 @@ function ClaimRows({ query, onAssign, role }) {
 
 export default function UnassignedClaimsPage() {
   const needsAdjuster = useApiQuery(() => claimsService.list({ needsAdjuster: 'true', pageSize: 50, sort: 'due_date', order: 'asc' }), [])
-  const noOwner = useApiQuery(() => claimsService.list({ assigneeId: 'unassigned', pageSize: 50, sort: 'submitted_at', order: 'asc' }), [])
+  const noOwner = useApiQuery(() => claimsService.list({ assigneeId: 'unassigned', pageSize: 50, sort: 'opened_at', order: 'asc' }), [])
   const [target, setTarget] = useState(null)
 
   return (
     <MotionPage>
-      <PageHeader title="Unassigned claims" description="Claims waiting for an adjuster or an operations owner." />
+      <PageHeader title="Unassigned claims" description="Claims waiting for an adjuster, or for a Claims Operations Manager when automatic routing found nobody available." />
       <div className="space-y-5">
         <SectionCard title="Awaiting adjuster assignment" description="Assigning an adjuster starts the investigation." bodyClassName="p-0">
           <ClaimRows query={needsAdjuster} role="ADJUSTER" onAssign={(c, role) => setTarget({ claim: c, role })} />
         </SectionCard>
-        <SectionCard title="No operations owner" bodyClassName="p-0">
+        <SectionCard title="No Claims Operations Manager" bodyClassName="p-0">
           <ClaimRows query={noOwner} role="OPERATIONS_OWNER" onAssign={(c, role) => setTarget({ claim: c, role })} />
         </SectionCard>
       </div>

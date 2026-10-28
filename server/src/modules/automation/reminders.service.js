@@ -1,4 +1,4 @@
-import { ACTIVE_STATUSES, REQUIRED_DOCUMENTS, humanize } from '../../../../shared/constants.js'
+import { ACTIVE_STATUSES, ROLES, humanize } from '../../../../shared/constants.js'
 import { businessRule, conflict, notFound } from '../../utils/errors.js'
 import { hoursFromNow } from '../../utils/format.js'
 import {
@@ -9,6 +9,7 @@ import {
   requireTab,
 } from '../../services/access.service.js'
 import { lockClaim } from '../../services/workflow.service.js'
+import { requiredArtifacts } from '../../services/config.service.js'
 import { recordAudit } from '../../services/audit.service.js'
 import { notify, claimLink, userIdsWithRole } from '../../services/notification.service.js'
 import { profileMap, nameOf } from '../../services/presenters.js'
@@ -21,28 +22,33 @@ const CUSTOMER_REQUEST_DAYS = 7
 // ---------------------------------------------------------------------------
 
 /**
- * Compares the claim's documents and open requests with the required checklist
- * for its claim type. Pure data; no AI is involved.
+ * Compares the claim's documents and open requests with its required artifacts
+ * (artifact_requirements; the segment configuration for drafts). Pure data; no AI is involved.
  */
 export async function computeDocumentChecklist(t, claim, now = new Date()) {
-  const required = REQUIRED_DOCUMENTS[claim.claim_type] || []
-  const [docs, requests] = await Promise.all([
-    t.findMany('documents', { where: { claim_id: claim.id, status: { ne: 'SUPERSEDED' } }, orderBy: [['uploaded_at', 'desc']] }),
-    t.findMany('information_requests', { where: { claim_id: claim.id, status: 'OPEN', request_type: 'DOCUMENT' } }),
+  const [docs, requirements] = await Promise.all([
+    t.findMany('documents', { where: { claim_id: claim.id }, orderBy: [['received_at', 'desc']] }),
+    t.findMany('artifact_requirements', { where: { claim_id: claim.id, requirement_type: 'DOCUMENT' } }),
   ])
+  const requiredRows = requirements.filter((r) => r.is_required)
+  const required = requiredRows.length ? requiredRows.map((r) => r.doc_type) : await requiredArtifacts(t, claim.segment, claim.claim_type)
+  const openRequests = requirements.filter((r) => r.status === 'REQUESTED')
 
-  const items = required.map((category) => {
-    const current = docs.filter((d) => d.category === category)
+  const items = required.map((docType) => {
+    const current = docs.filter((d) => d.doc_type === docType)
     const accepted = current.filter((d) => d.status === 'ACCEPTED')
     const pending = current.filter((d) => d.status === 'PENDING_REVIEW')
     const rejected = current.filter((d) => d.status === 'REJECTED')
-    const request = requests.find((r) => r.document_category === category)
-    const state = accepted.length ? 'ACCEPTED' : pending.length ? 'PENDING_REVIEW' : rejected.length ? 'REJECTED' : 'MISSING'
+    const row = requiredRows.find((r) => r.doc_type === docType)
+    const request = openRequests.find((r) => r.doc_type === docType)
+    const state = row?.status === 'WAIVED' ? 'WAIVED'
+      : accepted.length ? 'ACCEPTED' : pending.length ? 'PENDING_REVIEW' : rejected.length ? 'REJECTED' : 'MISSING'
     return {
-      category,
-      label: humanize(category),
+      category: docType,
+      label: humanize(docType),
       state,
-      documents: current.map((d) => ({ id: d.id, file_name: d.file_name, status: d.status, uploaded_at: d.uploaded_at })),
+      requirementId: row?.id || null,
+      documents: current.map((d) => ({ id: d.id, file_name: d.file_name, status: d.status, received_at: d.received_at })),
       rejectionReason: state === 'REJECTED' ? rejected[0].rejection_reason : null,
       openRequest: request
         ? { id: request.id, due_at: request.due_at, overdue: Boolean(request.due_at && new Date(request.due_at) < now) }
@@ -51,8 +57,8 @@ export async function computeDocumentChecklist(t, claim, now = new Date()) {
   })
 
   const additional = docs
-    .filter((d) => !required.includes(d.category))
-    .map((d) => ({ id: d.id, category: d.category, label: humanize(d.category), status: d.status, uploaded_at: d.uploaded_at }))
+    .filter((d) => !required.includes(d.doc_type))
+    .map((d) => ({ id: d.id, category: d.doc_type, label: humanize(d.doc_type), status: d.status, received_at: d.received_at }))
 
   const exception = Boolean(claim.document_exception_at)
   const outstanding = exception ? [] : items.filter((i) => i.state === 'MISSING' || i.state === 'REJECTED')
@@ -161,7 +167,7 @@ export async function createReminderDraft(ctx, claimId, { categories } = {}) {
       due_at: hoursFromNow(CUSTOMER_REQUEST_DAYS * 24),
       title: `Documents needed for claim ${claim.claim_number}`,
       message: draftMessage(claim, items),
-      document_categories: wanted,
+      doc_types: wanted,
       created_by: ctx.actor.id,
     })
     await recordAudit(t, ctx.actor, {
@@ -184,8 +190,9 @@ async function loadDraft(t, ctx, reminderId) {
 }
 
 /**
- * A person approves a customer draft: the message (optionally edited) becomes
- * one document request per category and a single notification to the claimant.
+ * A person approves a customer draft: the message (optionally edited) marks one
+ * artifact requirement per document type as requested, and a single
+ * notification goes to the claimant.
  */
 export async function approveReminder(ctx, reminderId, { message } = {}) {
   requirePermission(ctx.actor, 'automation.reminders')
@@ -197,22 +204,21 @@ export async function approveReminder(ctx, reminderId, { message } = {}) {
 
     const finalMessage = message?.trim() || reminder.message
     const checklist = await computeDocumentChecklist(t, claim)
-    const categories = reminder.document_categories.filter((c) => checklist.requestable.includes(c))
+    const categories = reminder.doc_types.filter((c) => checklist.requestable.includes(c))
     if (categories.length === 0) {
       throw businessRule('NOTHING_TO_REQUEST', 'These documents were received or requested since the draft was prepared. Discard the draft.')
     }
     const due = hoursFromNow(CUSTOMER_REQUEST_DAYS * 24)
-    const requests = await t.insert(
-      'information_requests',
-      categories.map((category) => ({
-        claim_id: claim.id,
-        request_type: 'DOCUMENT',
-        document_category: category,
-        message: finalMessage,
-        due_at: due,
-        requested_by: ctx.actor.id,
-      })),
-    )
+    const requests = []
+    const request = { status: 'REQUESTED', request_message: finalMessage, due_at: due, requested_by: ctx.actor.id, requested_at: new Date() }
+    for (const docType of categories) {
+      const required = await t.findOne('artifact_requirements', { claim_id: claim.id, doc_type: docType, is_required: true }, { forUpdate: true })
+      requests.push(
+        required
+          ? await t.updateById('artifact_requirements', required.id, request)
+          : await t.insert('artifact_requirements', { claim_id: claim.id, requirement_type: 'DOCUMENT', doc_type: docType, ...request }),
+      )
+    }
     const [notification] = await notify(ctx, t, {
       recipientIds: [claim.customer_id],
       claimId: claim.id,
@@ -224,8 +230,8 @@ export async function approveReminder(ctx, reminderId, { message } = {}) {
     const updated = await t.updateById('claim_reminders', reminder.id, {
       status: 'APPROVED',
       message: finalMessage,
-      document_categories: categories,
-      information_request_ids: requests.map((r) => r.id),
+      doc_types: categories,
+      artifact_requirement_ids: requests.map((r) => r.id),
       notification_id: notification?.id || null,
       decided_by: ctx.actor.id,
       decided_at: new Date(),
@@ -235,7 +241,7 @@ export async function approveReminder(ctx, reminderId, { message } = {}) {
       entityType: 'claim_reminder',
       entityId: reminder.id,
       claimId: claim.id,
-      metadata: { categories, edited: finalMessage !== reminder.message, informationRequestIds: requests.map((r) => r.id) },
+      metadata: { docTypes: categories, edited: finalMessage !== reminder.message, artifactRequirementIds: requests.map((r) => r.id) },
     })
     return updated
   })
@@ -296,8 +302,8 @@ export async function listReminders(ctx, query) {
 // ---------------------------------------------------------------------------
 
 /**
- * Notifies the responsible claims officer (assigned owner) or, when nobody owns
- * the claim, the claims managers about claims approaching or past their SLA due
+ * Notifies the responsible Claims Manager (assigned owner) or, when nobody owns
+ * the claim, all Claims Managers about claims approaching or past their SLA due
  * date. A dedupe key per claim, type, due date and recipient guarantees each
  * reminder is sent once. Also prepares (never sends) customer drafts for claims
  * waiting on documents that nobody has requested yet.
@@ -309,7 +315,7 @@ export async function runDeadlineReminderSweep(deps, { now = new Date() } = {}) 
     `select * from public.claims where status = any($1::text[]) and due_date is not null and due_date <= $2 order by due_date`,
     [ACTIVE_STATUSES, horizon],
   )
-  const managers = await userIdsWithRole(deps.db, 'CLAIMS_MANAGER')
+  const managers = await userIdsWithRole(deps.db, ROLES.OPS_MANAGER)
   let sent = 0
   for (const claim of claims) {
     const overdue = new Date(claim.due_date) < now
@@ -349,7 +355,7 @@ export async function runDeadlineReminderSweep(deps, { now = new Date() } = {}) 
     if (checklist.requestable.length === 0) continue
     const items = checklist.required.filter((i) => checklist.requestable.includes(i.category))
     const [inserted] = await deps.db.query(
-      `insert into public.claim_reminders (claim_id, reminder_type, audience, recipient_id, status, due_at, title, message, document_categories)
+      `insert into public.claim_reminders (claim_id, reminder_type, audience, recipient_id, status, due_at, title, message, doc_types)
        values ($1, 'MISSING_DOCUMENTS', 'CUSTOMER', $2, 'DRAFT', $3, $4, $5, $6)
        on conflict (claim_id) where status = 'DRAFT' do nothing returning id`,
       [claim.id, claim.customer_id, hoursFromNow(CUSTOMER_REQUEST_DAYS * 24, now), `Documents needed for claim ${claim.claim_number}`, draftMessage(claim, items), checklist.requestable],

@@ -4,7 +4,6 @@ import { can as canPermission, hasAnyRole } from '@shared/permissions.js'
 import { authService } from '@/services/authService.js'
 import { api, configureApiClient } from '@/services/apiClient.js'
 import { healthService } from '@/services/workflowService.js'
-import { APP_MODE } from '@/constants/config.js'
 
 const AuthContext = createContext(null)
 const ACTIVE_ROLE_KEY = 'harborpoint.activeRole'
@@ -17,7 +16,8 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [status, setStatus] = useState('loading')
   const [activeRole, setActiveRoleState] = useState(null)
-  const [serverMode, setServerMode] = useState(null)
+  // The API's /health answer: { demoData, ... }, or 'unreachable'.
+  const [server, setServer] = useState(null)
 
   const clear = useCallback(() => {
     setUser(null)
@@ -56,20 +56,9 @@ export function AuthProvider({ children }) {
     })
     healthService
       .check()
-      .then((h) => setServerMode(h.mode))
-      .catch(() => setServerMode('unreachable'))
+      .then(setServer)
+      .catch(() => setServer('unreachable'))
     loadProfile().catch(() => {})
-    let unsubscribe = () => {}
-    authService
-      .onAuthChange((event) => {
-        if (event === 'SIGNED_OUT') clear()
-        if (event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') loadProfile().catch(() => {})
-      })
-      .then((fn) => {
-        unsubscribe = fn
-      })
-      .catch(() => {})
-    return () => unsubscribe()
   }, [loadProfile, clear])
 
   const login = useCallback(
@@ -104,13 +93,12 @@ export function AuthProvider({ children }) {
       login,
       logout,
       refreshProfile: loadProfile,
-      appMode: APP_MODE,
-      serverMode,
-      modeMismatch: Boolean(serverMode && serverMode !== 'unreachable' && serverMode !== APP_MODE),
+      serverUnreachable: server === 'unreachable',
+      demoData: Boolean(server && server !== 'unreachable' && server.demoData),
       can: (permission) => canPermission(user?.roles || [], permission),
       hasRole: (...roles) => hasAnyRole(user?.roles || [], roles),
     }),
-    [user, status, activeRole, setActiveRole, login, logout, loadProfile, serverMode],
+    [user, status, activeRole, setActiveRole, login, logout, loadProfile, server],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

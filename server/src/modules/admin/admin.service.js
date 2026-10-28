@@ -1,24 +1,32 @@
 import { ROLES } from '../../../../shared/constants.js'
-import { businessRule, forbidden, notFound, validationError } from '../../utils/errors.js'
+import { businessRule, forbidden, notFound } from '../../utils/errors.js'
 import { escapeLike } from '../../db/queryBuilder.js'
 import { pageMeta, toOffset } from '../../utils/http.js'
 import { requirePermission } from '../../services/access.service.js'
 import { recordAudit } from '../../services/audit.service.js'
+import { runSlaSweep } from '../../services/sla.service.js'
 import { runOverdueSweep } from '../tasks/tasks.service.js'
 
 function preventSelfChange(ctx, userId) {
   if (userId === ctx.actor.id) {
-    throw forbidden('Administrators cannot change their own roles or status', 'SELF_ESCALATION_FORBIDDEN')
+    throw forbidden('You cannot change your own roles, limits or status', 'SELF_ESCALATION_FORBIDDEN')
   }
 }
 
-function validateGrant({ roleCode, approvalLimit }) {
-  if (roleCode === ROLES.CLAIMS_MANAGER && (approvalLimit == null || approvalLimit <= 0)) {
-    throw validationError('Claims managers need a positive approval limit')
-  }
-  if (roleCode !== ROLES.CLAIMS_MANAGER && approvalLimit != null) {
-    throw validationError('Approval limits only apply to the CLAIMS_MANAGER role')
-  }
+/** Per-user monetary authority overrides (ABAC attributes); null keeps the role default from authority_limits. */
+async function saveAttributes(t, ctx, userId, { reserveLimit, settlementLimit, region, teamId }) {
+  if ([reserveLimit, settlementLimit, region, teamId].every((v) => v === undefined)) return null
+  const existing = await t.findOne('user_attributes', { user_id: userId })
+  const values = { updated_by: ctx.actor.id }
+  if (reserveLimit !== undefined) values.reserve_limit = reserveLimit
+  if (settlementLimit !== undefined) values.settlement_limit = settlementLimit
+  if (region !== undefined) values.region = region
+  if (teamId !== undefined) values.team_id = teamId
+  const row = existing
+    ? (await t.update('user_attributes', { user_id: userId }, values))[0]
+    : await t.insert('user_attributes', { user_id: userId, ...values })
+  await recordAudit(t, ctx.actor, { action: 'USER_ATTRIBUTES_UPDATED', entityType: 'user_attributes', entityId: userId, before: existing, after: row })
+  return row
 }
 
 export async function listUsers(ctx, query) {
@@ -33,14 +41,22 @@ export async function listUsers(ctx, query) {
     where.id = { in: holders.map((h) => h.user_id) }
   }
   const [rows, total] = await Promise.all([
-    ctx.db.findMany('profiles', { where, orderBy: [['full_name', 'asc']], ...toOffset(query) }),
-    ctx.db.count('profiles', where),
+    ctx.db.findMany('users', { where, orderBy: [['full_name', 'asc']], ...toOffset(query) }),
+    ctx.db.count('users', where),
   ])
-  const roles = rows.length ? await ctx.db.findMany('user_roles', { where: { user_id: { in: rows.map((r) => r.id) } } }) : []
+  const ids = rows.map((r) => r.id)
+  const [roles, attributes] = ids.length
+    ? await Promise.all([
+        ctx.db.findMany('user_roles', { where: { user_id: { in: ids } } }),
+        ctx.db.findMany('user_attributes', { where: { user_id: { in: ids } } }),
+      ])
+    : [[], []]
+  const attrMap = Object.fromEntries(attributes.map((a) => [a.user_id, a]))
   return {
     items: rows.map((p) => ({
       ...p,
-      roles: roles.filter((r) => r.user_id === p.id).map((r) => ({ roleCode: r.role_code, approvalLimit: r.approval_limit, grantedAt: r.granted_at })),
+      roles: roles.filter((r) => r.user_id === p.id).map((r) => ({ roleCode: r.role_code, grantedAt: r.granted_at })),
+      attributes: attrMap[p.id] || null,
     })),
     meta: pageMeta(query, total),
   }
@@ -53,8 +69,7 @@ export async function listRoles(ctx) {
 
 export async function createUser(ctx, input) {
   requirePermission(ctx.actor, 'admin.users')
-  input.roles.forEach(validateGrant)
-  const staff = input.roles.some((r) => r.roleCode !== ROLES.CUSTOMER)
+  const staff = input.roles.some((r) => r !== ROLES.CLIENT)
   const created = await ctx.authProvider.createUser({
     email: input.email,
     password: input.password,
@@ -63,18 +78,19 @@ export async function createUser(ctx, input) {
     staff,
   })
   return ctx.db.tx(async (t) => {
-    const profile = await t.findById('profiles', created.id)
-    if (!profile) throw businessRule('PROFILE_MISSING', 'The authentication user was created but no profile was provisioned')
-    for (const grant of input.roles) {
+    const user = await t.findById('users', created.id)
+    if (!user) throw businessRule('USER_MISSING', 'The authentication user was created but no user record was provisioned')
+    for (const roleCode of input.roles) {
       await t.query(
-        `insert into public.user_roles (user_id, role_code, approval_limit, granted_by) values ($1, $2, $3, $4)
-         on conflict (user_id, role_code) do update set approval_limit = excluded.approval_limit, granted_by = excluded.granted_by`,
-        [created.id, grant.roleCode, grant.approvalLimit ?? null, ctx.actor.id],
+        `insert into public.user_roles (user_id, role_code, granted_by) values ($1, $2, $3)
+         on conflict (user_id, role_code) do update set granted_by = excluded.granted_by`,
+        [created.id, roleCode, ctx.actor.id],
       )
     }
+    await saveAttributes(t, ctx, created.id, input)
     await recordAudit(t, ctx.actor, {
       action: 'USER_CREATED',
-      entityType: 'profile',
+      entityType: 'user',
       entityId: created.id,
       after: { email: input.email, full_name: input.fullName },
       metadata: { roles: input.roles },
@@ -86,19 +102,28 @@ export async function createUser(ctx, input) {
 export async function grantRole(ctx, userId, grant) {
   requirePermission(ctx.actor, 'admin.users')
   preventSelfChange(ctx, userId)
-  validateGrant(grant)
   return ctx.db.tx(async (t) => {
-    const profile = await t.findById('profiles', userId)
-    if (!profile) throw notFound('User not found')
+    const user = await t.findById('users', userId)
+    if (!user) throw notFound('User not found')
     const before = await t.findOne('user_roles', { user_id: userId, role_code: grant.roleCode })
     const [row] = await t.query(
-      `insert into public.user_roles (user_id, role_code, approval_limit, granted_by) values ($1, $2, $3, $4)
-       on conflict (user_id, role_code) do update set approval_limit = excluded.approval_limit, granted_by = excluded.granted_by
+      `insert into public.user_roles (user_id, role_code, granted_by) values ($1, $2, $3)
+       on conflict (user_id, role_code) do update set granted_by = excluded.granted_by
        returning *`,
-      [userId, grant.roleCode, grant.approvalLimit ?? null, ctx.actor.id],
+      [userId, grant.roleCode, ctx.actor.id],
     )
+    await saveAttributes(t, ctx, userId, grant)
     await recordAudit(t, ctx.actor, { action: before ? 'ROLE_UPDATED' : 'ROLE_GRANTED', entityType: 'user_role', entityId: row.id, before, after: row })
     return row
+  })
+}
+
+export async function updateAttributes(ctx, userId, input) {
+  requirePermission(ctx.actor, 'admin.users')
+  preventSelfChange(ctx, userId)
+  return ctx.db.tx(async (t) => {
+    if (!(await t.findById('users', userId))) throw notFound('User not found')
+    return saveAttributes(t, ctx, userId, input)
   })
 }
 
@@ -118,17 +143,19 @@ export async function setUserActive(ctx, userId, { isActive }) {
   requirePermission(ctx.actor, 'admin.users')
   preventSelfChange(ctx, userId)
   return ctx.db.tx(async (t) => {
-    const before = await t.findById('profiles', userId)
+    const before = await t.findById('users', userId)
     if (!before) throw notFound('User not found')
-    const after = await t.updateById('profiles', userId, { is_active: isActive })
-    await recordAudit(t, ctx.actor, { action: isActive ? 'USER_ACTIVATED' : 'USER_DEACTIVATED', entityType: 'profile', entityId: userId, before, after })
+    const after = await t.updateById('users', userId, { is_active: isActive, updated_by: ctx.actor.id })
+    await recordAudit(t, ctx.actor, { action: isActive ? 'USER_ACTIVATED' : 'USER_DEACTIVATED', entityType: 'user', entityId: userId, before, after })
     return after
   })
 }
 
 export async function triggerOverdueSweep(ctx) {
   requirePermission(ctx.actor, 'admin.jobs')
-  const result = await runOverdueSweep(ctx)
+  const tasks = await runOverdueSweep(ctx)
+  const sla = await runSlaSweep(ctx)
+  const result = { ...tasks, sla }
   await recordAudit(ctx.db, ctx.actor, { action: 'OVERDUE_SWEEP_TRIGGERED', entityType: 'job', metadata: result })
   return result
 }
@@ -136,11 +163,13 @@ export async function triggerOverdueSweep(ctx) {
 export function systemInfo(ctx) {
   requirePermission(ctx.actor, 'admin.users')
   return {
-    dataMode: ctx.config.DATA_MODE,
+    database: 'PostgreSQL',
+    demoData: ctx.config.demoData,
     environment: ctx.config.NODE_ENV,
     emailAdapter: ctx.email.name,
     paymentAdapter: ctx.payments.name,
     paymentsSimulated: ctx.payments.isSimulated,
     storage: ctx.storage.kind,
+    fieldEncryption: 'AES-256-GCM',
   }
 }

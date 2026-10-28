@@ -156,16 +156,16 @@ function DocumentChecklistCard({ claim, onChanged }) {
 // C. Summary — recorded facts and AI suggestions, visually separate
 // ---------------------------------------------------------------------------
 function FactsPanel({ facts }) {
-  const { incident, timeline, documentsReceived, missingInformation, pendingActions } = facts
+  const { loss, timeline, documentsReceived, missingInformation, pendingActions } = facts
   return (
     <div className="space-y-4">
       <KeyValue
         items={[
-          { label: 'Incident', value: incident.occurred_at ? `${formatDateTime(incident.occurred_at)} · ${humanize(incident.category || '')}` : '—' },
-          { label: 'Location', value: incident.location },
-          { label: 'Estimated loss', value: formatMoney(incident.estimated_loss) },
-          { label: 'Affected asset', value: incident.affected_asset },
-          { label: 'Description', value: incident.description, wide: true },
+          { label: 'Loss', value: loss.occurred_at ? `${formatDateTime(loss.occurred_at)} · ${humanize(loss.type || '')}` : '—' },
+          { label: 'Location', value: loss.location },
+          { label: 'Estimated loss', value: formatMoney(loss.estimated_loss) },
+          { label: 'Affected asset', value: loss.affected_asset },
+          { label: 'Description', value: loss.description, wide: true },
         ]}
       />
       <div className="grid gap-4 md:grid-cols-3">
@@ -184,11 +184,11 @@ function FactsPanel({ facts }) {
           <ul className="mt-1.5 space-y-1 text-sm">
             {documentsReceived.length === 0 && <li className="text-muted-foreground">None</li>}
             {documentsReceived.map((d, i) => (
-              <li key={i}>{humanize(d.category)} <span className="text-muted-foreground">· {humanize(d.status).toLowerCase()}</span></li>
+              <li key={i}>{humanize(d.doc_type)} <span className="text-muted-foreground">· {humanize(d.status).toLowerCase()}</span></li>
             ))}
           </ul>
           {missingInformation.length > 0 && (
-            <p className="mt-2 text-sm text-red-700">Missing: {missingInformation.map((m) => humanize(m.category)).join(', ')}</p>
+            <p className="mt-2 text-sm text-red-700">Missing: {missingInformation.map((m) => humanize(m.doc_type)).join(', ')}</p>
           )}
         </div>
         <div>
@@ -291,7 +291,7 @@ function SummaryCard({ claim, aiStatus }) {
 // ---------------------------------------------------------------------------
 function displayValue(field, value) {
   if (value === null || value === undefined || value === '') return <span className="text-muted-foreground">—</span>
-  if (field.key === 'incident_date') return formatDateTime(value)
+  if (field.key === 'loss_date') return formatDateTime(value)
   if (field.key === 'estimated_loss') return formatMoney(value)
   return String(value)
 }
@@ -351,7 +351,7 @@ function ExtractionReview({ run, claim, onChanged }) {
                 </TableCell>
                 <TableCell className="max-w-xs whitespace-pre-wrap break-words">
                   {displayValue(f, f.value)}
-                  {f.value !== null && <span className="block text-[11px] text-muted-foreground">Confidence: {f.confidence}</span>}
+                  {f.value !== null && <span className="block text-[11px] text-muted-foreground">Confidence: {Math.round(f.confidence * 100)}% ({humanize(f.confidence_band)}){f.needs_confirmation && " · confirm before applying"}</span>}
                 </TableCell>
                 <TableCell className="max-w-xs text-xs text-muted-foreground">
                   {f.source?.page && <span className="block">Page {f.source.page}</span>}
@@ -454,7 +454,7 @@ function ExtractionCard({ claim, aiStatus, reloadClaim }) {
               <li key={d.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm">
                 <div className="min-w-0">
                   <p className="truncate font-medium">{d.file_name}</p>
-                  <p className="text-xs text-muted-foreground">{humanize(d.category)} · v{d.version_no} · {humanize(d.status).toLowerCase()}</p>
+                  <p className="text-xs text-muted-foreground">{humanize(d.doc_type)} · v{d.version} · {humanize(d.status).toLowerCase()}</p>
                 </div>
                 {can('automation.extract') && (
                   <Button size="sm" variant="outline" onClick={() => extract(d)} loading={runningDoc === d.id} disabled={!canExtract || Boolean(runningDoc)}>

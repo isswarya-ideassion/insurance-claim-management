@@ -3,14 +3,15 @@ import { useNavigate } from 'react-router-dom'
 import { Controller, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { AnimatePresence, motion } from 'framer-motion'
-import { AlertTriangle, ArrowLeft, ArrowRight, Check, CheckCircle2, Save, Send, ShieldCheck, Upload, XCircle } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, ArrowRight, Check, CheckCircle2, Save, Send, ShieldCheck, Trash2, Upload, XCircle } from 'lucide-react'
 import { toast } from 'sonner'
-import { INCIDENT_CATEGORIES, POLICY_TYPE_LABELS, REQUIRED_DOCUMENTS, humanize } from '@shared/constants.js'
+import { LOSS_TYPES, POLICY_TYPE_LABELS, REQUIRED_DOCUMENTS, humanize, indianMobileDigits } from '@shared/constants.js'
 import { claimsService, policiesService } from '@/services/claimsService.js'
 import { documentsService } from '@/services/documentsService.js'
 import { useAuth } from '@/context/AuthContext.js'
 import { claimFormSchema, STEP_FIELDS, serverFieldToForm, stepForField, toDraftPayload } from '@/schemas/claimSchemas.js'
 import { FormField, KeyValue } from '@/components/common/FormField.js'
+import { PhoneInput, formatLocalMobile } from '@/components/common/PhoneInput.js'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog.js'
 import { Button } from '@/components/ui/button.js'
 import { Input, Textarea } from '@/components/ui/input.js'
@@ -95,24 +96,26 @@ export function NewClaimWizard({ draftId: initialDraftId, initialPolicy }) {
     defaultValues: {
       policyNumber: initialPolicy || '',
       insuredName: '',
-      incidentAt: '',
-      incidentLocation: '',
-      incidentCategory: '',
-      incidentDescription: '',
+      lossDate: '',
+      lossLocation: '',
+      lossCity: '',
+      lossCountry: 'India',
+      lossType: '',
+      lossDescription: '',
       estimatedLoss: '',
       affectedAsset: '',
       contactName: user?.fullName || '',
-      contactPhone: user?.phone || '',
+      contactPhone: formatLocalMobile(indianMobileDigits(user?.phone) || ''),
       contactEmail: user?.email || '',
       declarationAccepted: false,
     },
   })
   const { register, control, watch, setValue, getValues, trigger, setError, formState } = form
   const policyNumber = watch('policyNumber')
-  const incidentAt = watch('incidentAt')
-  const incidentCategory = watch('incidentCategory')
+  const lossDate = watch('lossDate')
+  const lossType = watch('lossType')
   const estimatedLoss = watch('estimatedLoss')
-  const policy = useMemo(() => policies.find((p) => p.policy_number === policyNumber), [policies, policyNumber])
+  const policy = useMemo(() => policies.find((p) => p.external_policy_no === policyNumber), [policies, policyNumber])
 
   useEffect(() => {
     let cancelled = false
@@ -129,16 +132,18 @@ export function NewClaimWizard({ draftId: initialDraftId, initialPolicy }) {
             return
           }
           form.reset({
-            policyNumber: detail.policy?.policy_number || '',
+            policyNumber: detail.policy?.external_policy_no || '',
             insuredName: c.insured_name || '',
-            incidentAt: toDateTimeLocal(c.incident_at),
-            incidentLocation: c.incident_location || '',
-            incidentCategory: c.incident_category || '',
-            incidentDescription: c.incident_description || '',
+            lossDate: toDateTimeLocal(c.loss_date),
+            lossLocation: c.loss_location || '',
+            lossCity: c.loss_city || '',
+            lossCountry: c.loss_country || 'India',
+            lossType: c.loss_type || '',
+            lossDescription: c.loss_description || '',
             estimatedLoss: c.estimated_loss ?? '',
             affectedAsset: c.affected_asset || '',
             contactName: c.contact_name || user?.fullName || '',
-            contactPhone: c.contact_phone || user?.phone || '',
+            contactPhone: formatLocalMobile(indianMobileDigits(c.contact_phone || user?.phone) || ''),
             contactEmail: c.contact_email || user?.email || '',
             declarationAccepted: Boolean(c.declaration_accepted),
           })
@@ -169,15 +174,15 @@ export function NewClaimWizard({ draftId: initialDraftId, initialPolicy }) {
       policiesService
         .eligibility({
           policyNumber,
-          incidentAt: incidentAt ? new Date(incidentAt).toISOString() : undefined,
-          incidentCategory: incidentCategory || undefined,
+          lossDate: lossDate ? new Date(lossDate).toISOString() : undefined,
+          lossType: lossType || undefined,
           estimatedLoss: estimatedLoss === '' ? undefined : Number(estimatedLoss),
         })
         .then(setEligibility)
         .catch(() => setEligibility(null))
     }, 300)
     return () => clearTimeout(handle)
-  }, [policyNumber, incidentAt, incidentCategory, estimatedLoss])
+  }, [policyNumber, lossDate, lossType, estimatedLoss])
 
   async function saveDraft(nextStep = step, { silent = false } = {}) {
     setSaving(true)
@@ -212,7 +217,7 @@ export function NewClaimWizard({ draftId: initialDraftId, initialPolicy }) {
     if (await saveDraft(next, { silent: true })) {
       setStep(next)
       setMaxReached((m) => Math.max(m, next))
-      window.scrollTo({ top: 0, behavior: 'smooth' })
+      document.getElementById('main')?.scrollTo({ top: 0, behavior: 'smooth' })
     }
   }
 
@@ -247,9 +252,11 @@ export function NewClaimWizard({ draftId: initialDraftId, initialPolicy }) {
   if (loading) return <div className="h-96 animate-pulse rounded-xl bg-slate-200/70" aria-busy="true" aria-label="Loading claim form" />
 
   const errors = formState.errors
-  const categories = policy ? INCIDENT_CATEGORIES[policy.policy_type] || [] : []
+  const categories = policy ? LOSS_TYPES[policy.policy_type] || [] : []
   const values = getValues()
   const required = policy ? REQUIRED_DOCUMENTS[policy.policy_type] || [] : []
+  // A rejected upload does not count; the customer must upload it again.
+  const missingDocs = required.filter((cat) => !documents.some((d) => d.doc_type === cat && d.status !== 'REJECTED'))
 
   return (
     <div className="rounded-xl border bg-card shadow-sm">
@@ -265,7 +272,7 @@ export function NewClaimWizard({ draftId: initialDraftId, initialPolicy }) {
                 {policies.length === 0 && <p className="text-sm text-muted-foreground">No policies are linked to your account. Contact HarborPoint to link your policy.</p>}
                 <div className="grid gap-3 md:grid-cols-2" role="radiogroup" aria-label="Policy">
                   {policies.map((p) => {
-                    const selected = policyNumber === p.policy_number
+                    const selected = policyNumber === p.external_policy_no
                     const disabled = p.status !== 'ACTIVE'
                     return (
                       <button
@@ -274,20 +281,20 @@ export function NewClaimWizard({ draftId: initialDraftId, initialPolicy }) {
                         role="radio"
                         aria-checked={selected}
                         onClick={() => {
-                          setValue('policyNumber', p.policy_number, { shouldValidate: true })
-                          setValue('incidentCategory', '')
+                          setValue('policyNumber', p.external_policy_no, { shouldValidate: true })
+                          setValue('lossType', '')
                           setValue('insuredName', p.insured_name)
                           setValue('affectedAsset', p.insured_asset || '')
                         }}
                         className={cn('rounded-xl border p-4 text-left transition-colors', selected ? 'border-accent bg-teal-50/60 ring-1 ring-accent' : 'hover:border-slate-300', disabled && 'opacity-60')}
                       >
                         <div className="flex items-center justify-between gap-2">
-                          <span className="font-medium">{p.policy_number}</span>
+                          <span className="font-medium">{p.external_policy_no}</span>
                           <StatusBadge value={p.status} />
                         </div>
                         <p className="mt-1 text-sm">{POLICY_TYPE_LABELS[p.policy_type]} · {p.insured_asset}</p>
                         <p className="mt-1 text-xs text-muted-foreground">
-                          {formatDate(p.effective_from)} – {formatDate(p.effective_to)} · Sum insured {formatMoney(p.sum_insured)}
+                          {formatDate(p.effective_date)} – {formatDate(p.expiry_date)} · Sum insured {formatMoney(p.sum_insured)}
                         </p>
                       </button>
                     )
@@ -299,8 +306,8 @@ export function NewClaimWizard({ draftId: initialDraftId, initialPolicy }) {
                     <FormField label="Policy type">
                       <Input value={POLICY_TYPE_LABELS[policy.policy_type]} readOnly className="bg-muted" />
                     </FormField>
-                    <FormField label="Insured name" error={errors.insuredName?.message} required>
-                      <Input {...register('insuredName')} />
+                    <FormField label="Insured name" hint="As shown on your policy. Contact us if it needs correcting." error={errors.insuredName?.message} required>
+                      <Input {...register('insuredName')} readOnly tabIndex={-1} className="cursor-not-allowed bg-muted" />
                     </FormField>
                   </div>
                 )}
@@ -310,17 +317,23 @@ export function NewClaimWizard({ draftId: initialDraftId, initialPolicy }) {
             {step === 2 && (
               <div className="grid gap-4 sm:grid-cols-2">
                 <h2 className="text-lg font-semibold sm:col-span-2">What happened?</h2>
-                <FormField label="Incident date and time" error={errors.incidentAt?.message} required>
-                  <Input type="datetime-local" max={toDateTimeLocal(new Date())} {...register('incidentAt')} />
+                <FormField label="Loss date and time" error={errors.lossDate?.message} required>
+                  <Input type="datetime-local" max={toDateTimeLocal(new Date())} {...register('lossDate')} />
                 </FormField>
-                <FormField label="Incident category" error={errors.incidentCategory?.message} required>
-                  <Controller control={control} name="incidentCategory" render={({ field }) => <Select value={field.value} onValueChange={field.onChange} placeholder="Select category" options={categories.map((c) => ({ value: c, label: humanize(c) }))} />} />
+                <FormField label="Loss type" error={errors.lossType?.message} required>
+                  <Controller control={control} name="lossType" render={({ field }) => <Select value={field.value} onValueChange={field.onChange} placeholder="Select loss type" options={categories.map((c) => ({ value: c, label: humanize(c) }))} />} />
                 </FormField>
-                <FormField label="Incident location" error={errors.incidentLocation?.message} required className="sm:col-span-2">
-                  <Input placeholder="Street address, city, or a clear description of the place" {...register('incidentLocation')} />
+                <FormField label="Loss location" hint="Street address, landmark or a clear description of the place" error={errors.lossLocation?.message} required className="sm:col-span-2">
+                  <Textarea className="min-h-24" placeholder="e.g. 14 MG Road, opposite City Mall, near the metro station" {...register('lossLocation')} />
                 </FormField>
-                <FormField label="Incident description" error={errors.incidentDescription?.message} hint="Describe the sequence of events, any people involved and any reports made." required className="sm:col-span-2">
-                  <Textarea className="min-h-32" {...register('incidentDescription')} />
+                <FormField label="City" error={errors.lossCity?.message} required>
+                  <Input autoComplete="address-level2" {...register('lossCity')} />
+                </FormField>
+                <FormField label="Country" error={errors.lossCountry?.message} required>
+                  <Input autoComplete="country-name" {...register('lossCountry')} />
+                </FormField>
+                <FormField label="Loss description" error={errors.lossDescription?.message} hint="Describe the sequence of events, any people involved and any reports made." required className="sm:col-span-2">
+                  <Textarea className="min-h-32" {...register('lossDescription')} />
                 </FormField>
               </div>
             )}
@@ -328,7 +341,7 @@ export function NewClaimWizard({ draftId: initialDraftId, initialPolicy }) {
             {step === 3 && (
               <div className="grid gap-4 sm:grid-cols-2">
                 <h2 className="text-lg font-semibold sm:col-span-2">Loss details</h2>
-                <FormField label="Estimated loss amount (USD)" error={errors.estimatedLoss?.message} hint={policy ? `Sum insured ${formatMoney(policy.sum_insured)} · deductible ${formatMoney(policy.deductible)}` : undefined} required>
+                <FormField label="Estimated loss amount (₹)" error={errors.estimatedLoss?.message} hint={policy ? `Sum insured ${formatMoney(policy.sum_insured)} · deductible ${formatMoney(policy.deductible)}` : undefined} required>
                   <Input type="number" min="0" step="0.01" inputMode="decimal" {...register('estimatedLoss')} />
                 </FormField>
                 <FormField label="Affected property or asset" error={errors.affectedAsset?.message} required>
@@ -342,7 +355,7 @@ export function NewClaimWizard({ draftId: initialDraftId, initialPolicy }) {
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <h2 className="text-lg font-semibold">Supporting documents</h2>
-                    <p className="text-sm text-muted-foreground">Uploading required documents now speeds up your claim. You can also add them later.</p>
+                    <p className="text-sm text-muted-foreground">Upload each required document to continue. You can add other supporting documents too.</p>
                   </div>
                   <Button type="button" onClick={() => setUploadOpen(true)} disabled={!draftId}>
                     <Upload /> Upload document
@@ -354,7 +367,7 @@ export function NewClaimWizard({ draftId: initialDraftId, initialPolicy }) {
                     {documents.map((d) => (
                       <li key={d.id} className="flex items-center justify-between gap-3 p-3 text-sm">
                         <span className="min-w-0 truncate">
-                          <strong className="font-medium">{d.file_name}</strong> · {humanize(d.category)} · {formatFileSize(d.size_bytes)}
+                          <strong className="font-medium">{d.file_name}</strong> · {humanize(d.doc_type)} · {formatFileSize(d.size_bytes)}
                         </span>
                         <StatusBadge value={d.status} />
                       </li>
@@ -372,8 +385,8 @@ export function NewClaimWizard({ draftId: initialDraftId, initialPolicy }) {
                 <FormField label="Contact name" error={errors.contactName?.message} required>
                   <Input autoComplete="name" {...register('contactName')} />
                 </FormField>
-                <FormField label="Phone number" error={errors.contactPhone?.message} required>
-                  <Input type="tel" autoComplete="tel" {...register('contactPhone')} />
+                <FormField label="Mobile number" hint="10-digit Indian mobile number" error={errors.contactPhone?.message} required>
+                  <PhoneInput {...register('contactPhone')} />
                 </FormField>
                 <FormField label="Email" error={errors.contactEmail?.message} required className="sm:col-span-2">
                   <Input type="email" autoComplete="email" {...register('contactEmail')} />
@@ -389,17 +402,17 @@ export function NewClaimWizard({ draftId: initialDraftId, initialPolicy }) {
                     items={[
                       { label: 'Policy', value: `${values.policyNumber} · ${policy ? POLICY_TYPE_LABELS[policy.policy_type] : ''}` },
                       { label: 'Insured name', value: values.insuredName },
-                      { label: 'Incident', value: `${humanize(values.incidentCategory)} · ${formatDateTime(values.incidentAt)}` },
-                      { label: 'Location', value: values.incidentLocation },
-                      { label: 'Description', value: values.incidentDescription, wide: true },
+                      { label: 'Loss', value: `${humanize(values.lossType)} · ${formatDateTime(values.lossDate)}` },
+                      { label: 'Location', value: [values.lossLocation, values.lossCity, values.lossCountry].filter(Boolean).join(', ') },
+                      { label: 'Description', value: values.lossDescription, wide: true },
                       { label: 'Estimated loss', value: formatMoney(values.estimatedLoss) },
                       { label: 'Affected asset', value: values.affectedAsset },
                       { label: 'Documents', value: `${documents.length} uploaded` },
-                      { label: 'Contact', value: `${values.contactName} · ${values.contactPhone} · ${values.contactEmail}`, wide: true },
+                      { label: 'Contact', value: `${values.contactName} · +91 ${values.contactPhone} · ${values.contactEmail}`, wide: true },
                     ]}
                   />
                 </div>
-                {required.some((cat) => !documents.some((d) => d.category === cat)) && (
+                {missingDocs.length > 0 && (
                   <p className="flex items-start gap-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
                     <AlertTriangle className="mt-0.5 size-4 shrink-0" /> Some required documents are missing. You can submit now, but we will ask for them before assessing your claim.
                   </p>
@@ -425,6 +438,13 @@ export function NewClaimWizard({ draftId: initialDraftId, initialPolicy }) {
           </div>
         )}
 
+        {step === 4 && missingDocs.length > 0 && (
+          <p className="mt-4 flex items-start gap-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-900" role="status">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+            <span>Upload {missingDocs.map((c) => humanize(c).toLowerCase()).join(', ')} to continue.</span>
+          </p>
+        )}
+
         <div className="mt-6 flex flex-col-reverse gap-2 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex gap-2">
             {step > 1 && (
@@ -433,8 +453,8 @@ export function NewClaimWizard({ draftId: initialDraftId, initialPolicy }) {
               </Button>
             )}
             {draftId && (
-              <Button type="button" variant="ghost" className="text-red-700" onClick={() => setDiscardOpen(true)}>
-                Discard draft
+              <Button type="button" variant="destructive-outline" onClick={() => setDiscardOpen(true)}>
+                <Trash2 /> Discard draft
               </Button>
             )}
           </div>
@@ -443,7 +463,7 @@ export function NewClaimWizard({ draftId: initialDraftId, initialPolicy }) {
               <Save /> Save draft
             </Button>
             {step < 6 ? (
-              <Button type="button" onClick={goNext} loading={saving}>
+              <Button type="button" onClick={goNext} loading={saving} disabled={step === 4 && missingDocs.length > 0} title={step === 4 && missingDocs.length > 0 ? 'Upload the required documents to continue' : undefined}>
                 Continue <ArrowRight />
               </Button>
             ) : (
@@ -475,7 +495,7 @@ export function NewClaimWizard({ draftId: initialDraftId, initialPolicy }) {
             {duplicate?.map((d) => (
               <li key={d.id} className="flex items-center justify-between rounded-lg border p-3 text-sm">
                 <span>
-                  <strong>{d.claim_number}</strong> · {formatDateTime(d.incident_at)} · {formatMoney(d.estimated_loss)}
+                  <strong>{d.claim_number}</strong> · {formatDateTime(d.loss_date)} · {formatMoney(d.estimated_loss)}
                 </span>
                 <span className="text-xs text-muted-foreground">{d.status_label}</span>
               </li>

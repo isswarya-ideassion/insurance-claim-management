@@ -19,12 +19,12 @@ export default function DecisionHistoryPage() {
   const query = useApiQuery(() => approvalsService.history(params), [JSON.stringify(params)])
   return (
     <MotionPage>
-      <PageHeader title="Approval decision history" description="Immutable record of every reserve and settlement decision." />
+      <PageHeader title="Approval decision history" description="Immutable record of every reserve, evaluation, closure and settlement decision." />
       <div className="rounded-xl border bg-card shadow-sm">
         <div className="flex flex-wrap items-center gap-3 border-b p-4">
-          <div className="w-44"><Select aria-label="Type" allowClear placeholder="All types" value={params.type || ''} onValueChange={(type) => setParams({ type })} options={[{ value: 'RESERVE', label: 'Reserve' }, { value: 'SETTLEMENT', label: 'Settlement' }]} /></div>
-          <div className="w-44"><Select aria-label="Decision" allowClear placeholder="All decisions" value={params.decision || ''} onValueChange={(decision) => setParams({ decision })} options={['APPROVED', 'RETURNED', 'REJECTED'].map((d) => ({ value: d, label: humanize(d) }))} /></div>
-          {can('reserves.decide') && (
+          <div className="w-44"><Select aria-label="Type" allowClear placeholder="All types" value={params.type || ''} onValueChange={(type) => setParams({ type })} options={['RESERVE', 'EVALUATION', 'CLOSURE', 'SETTLEMENT'].map((t) => ({ value: t, label: humanize(t) }))} /></div>
+          <div className="w-44"><Select aria-label="Decision" allowClear placeholder="All decisions" value={params.decision || ''} onValueChange={(decision) => setParams({ decision })} options={['APPROVED', 'MODIFIED', 'RETURNED', 'REJECTED'].map((d) => ({ value: d, label: humanize(d) }))} /></div>
+          {(can('reserves.review') || can('settlements.approve')) && (
             <label className="flex items-center gap-2 text-sm">
               <Switch checked={params.mine === 'true'} onCheckedChange={(v) => setParams({ mine: v ? 'true' : '' })} aria-label="My decisions" />
               My decisions

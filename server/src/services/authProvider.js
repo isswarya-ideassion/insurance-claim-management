@@ -1,5 +1,6 @@
 import { randomBytes, scrypt as scryptCb, timingSafeEqual, createHash } from 'node:crypto'
 import { promisify } from 'node:util'
+import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import { AppError, conflict, unauthorized } from '../utils/errors.js'
 
@@ -11,79 +12,62 @@ export async function hashPassword(password) {
   return `scrypt$${salt.toString('base64')}$${hash.toString('base64')}`
 }
 
+const isBcrypt = (stored) => /^\$2[aby]\$\d{2}\$/.test(stored || '')
+
+/**
+ * Accepts the API's scrypt hashes and the bcrypt hashes of accounts imported
+ * from Supabase Auth. Returns whether the password matched and whether the
+ * stored hash should be replaced with a fresh scrypt hash.
+ */
 async function verifyPassword(password, stored) {
-  if (!stored || !stored.startsWith('scrypt$')) return false
+  if (isBcrypt(stored)) return { valid: await bcrypt.compare(password, stored), rehash: true }
+  if (!stored || !stored.startsWith('scrypt$')) return { valid: false, rehash: false }
   const [, saltB64, hashB64] = stored.split('$')
   const expected = Buffer.from(hashB64, 'base64')
   const actual = await scrypt(password, Buffer.from(saltB64, 'base64'), expected.length)
-  return timingSafeEqual(expected, actual)
+  return { valid: timingSafeEqual(expected, actual), rehash: false }
 }
 
-/**
- * Supabase Auth. Tokens are issued to the browser by supabase-js (anon key)
- * and verified here with the service-role client.
- */
-export async function createSupabaseAuthProvider(config) {
-  const { createClient } = await import('@supabase/supabase-js')
-  const admin = createClient(config.SUPABASE_URL, config.SUPABASE_SERVICE_ROLE_KEY, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  })
-  return {
-    mode: 'supabase',
-    admin,
-    async verifyToken(token) {
-      const { data, error } = await admin.auth.getUser(token)
-      if (error || !data?.user) throw unauthorized('Session is invalid or has expired')
-      return { id: data.user.id, email: data.user.email }
-    },
-    async createUser({ email, password, fullName, phone, staff }) {
-      const { data, error } = await admin.auth.admin.createUser({
-        email,
-        password,
-        email_confirm: true,
-        user_metadata: { full_name: fullName, phone },
-        app_metadata: staff ? { provisioned_staff: true } : {},
-      })
-      if (error) {
-        if (/already/i.test(error.message)) throw conflict('A user with this email already exists', 'USER_EXISTS')
-        throw new AppError(502, 'AUTH_PROVIDER_ERROR', error.message)
-      }
-      return { id: data.user.id, email: data.user.email }
-    },
-  }
-}
+// Verified against when the email is unknown, so response time does not reveal which emails exist.
+const DUMMY_HASH = await hashPassword(randomBytes(16).toString('hex'))
 
 /**
- * MOCK MODE ONLY. Users live in the embedded database's auth.users stand-in;
- * sessions are HMAC-signed tokens. Never enabled when NODE_ENV=production
- * (enforced in config/env.js).
+ * Email + password authentication against auth.users in PostgreSQL. Sessions
+ * are HS256 tokens signed with AUTH_TOKEN_SECRET; password-reset tokens are
+ * single-use because they embed a fingerprint of the current password hash.
  */
-export function createMockAuthProvider(config, db, emailService) {
-  const secret = config.MOCK_AUTH_SECRET && !/change-me/.test(config.MOCK_AUTH_SECRET)
-    ? config.MOCK_AUTH_SECRET
-    : randomBytes(32).toString('hex')
-  const issuer = 'harborpoint-mock-auth'
+export function createPasswordAuthProvider(config, db, emailService) {
+  const secret = config.AUTH_TOKEN_SECRET
+  const issuer = 'harborpoint-claims-api'
+  const sessionSeconds = Math.round(config.AUTH_TOKEN_TTL_HOURS * 3600)
 
   const fingerprint = (hash) => createHash('sha256').update(hash || '').digest('hex').slice(0, 16)
+  const findByEmail = async (email) =>
+    (await db.query('select id, email, encrypted_password from auth.users where lower(email) = lower($1)', [email]))[0]
 
   async function insertAuthUser({ email, password, fullName, phone, staff }) {
-    const existing = await db.query('select id from auth.users where lower(email) = lower($1)', [email])
-    if (existing.length) throw conflict('A user with this email already exists', 'USER_EXISTS')
-    const rows = await db.query(
-      `insert into auth.users (email, encrypted_password, raw_user_meta_data, raw_app_meta_data, email_confirmed_at)
-       values ($1, $2, $3, $4, now()) returning id, email`,
-      [
-        email.toLowerCase(),
-        await hashPassword(password),
-        JSON.stringify({ full_name: fullName || '', phone: phone || null }),
-        JSON.stringify(staff ? { provisioned_staff: true } : {}),
-      ],
-    )
-    return rows[0]
+    if (await findByEmail(email)) throw conflict('A user with this email already exists', 'USER_EXISTS')
+    try {
+      const rows = await db.query(
+        `insert into auth.users (email, encrypted_password, raw_user_meta_data, raw_app_meta_data, email_confirmed_at)
+         values ($1, $2, $3, $4, now()) returning id, email`,
+        [
+          email.toLowerCase(),
+          await hashPassword(password),
+          JSON.stringify({ full_name: fullName || '', phone: phone || null }),
+          JSON.stringify(staff ? { provisioned_staff: true } : {}),
+        ],
+      )
+      return rows[0]
+    } catch (err) {
+      // Two simultaneous registrations for one email: the unique index decides.
+      if (err.code === 'DUPLICATE') throw conflict('A user with this email already exists', 'USER_EXISTS')
+      throw err
+    }
   }
 
   return {
-    mode: 'mock',
+    mode: 'password',
     async verifyToken(token) {
       try {
         const payload = jwt.verify(token, secret, { issuer, algorithms: ['HS256'] })
@@ -94,20 +78,18 @@ export function createMockAuthProvider(config, db, emailService) {
       }
     },
     async login(email, password) {
-      const rows = await db.query(
-        'select id, email, encrypted_password from auth.users where lower(email) = lower($1)',
-        [email],
-      )
-      const user = rows[0]
-      const valid = user ? await verifyPassword(password, user.encrypted_password) : false
-      if (!valid) throw unauthorized('Invalid email or password')
-      const expiresIn = 8 * 3600
+      const user = await findByEmail(email)
+      const { valid, rehash } = await verifyPassword(password, user ? user.encrypted_password : DUMMY_HASH)
+      if (!user || !valid) throw unauthorized('Invalid email or password')
+      if (rehash) {
+        await db.query('update auth.users set encrypted_password = $2 where id = $1', [user.id, await hashPassword(password)])
+      }
       const accessToken = jwt.sign({ sub: user.id, email: user.email, purpose: 'session' }, secret, {
         issuer,
-        expiresIn,
+        expiresIn: sessionSeconds,
         algorithm: 'HS256',
       })
-      return { accessToken, expiresIn, tokenType: 'bearer' }
+      return { accessToken, expiresIn: sessionSeconds, tokenType: 'bearer' }
     },
     async register({ email, password, fullName, phone }) {
       return insertAuthUser({ email, password, fullName, phone, staff: false })
@@ -116,9 +98,7 @@ export function createMockAuthProvider(config, db, emailService) {
       return insertAuthUser({ email, password, fullName, phone, staff })
     },
     async requestPasswordReset(email, resetUrlBase) {
-      const rows = await db.query('select id, email, encrypted_password from auth.users where lower(email) = lower($1)', [email])
-      const user = rows[0]
-      // Same response whether or not the account exists, to avoid account enumeration.
+      const user = await findByEmail(email)
       if (!user) return { delivery: 'NOT_SENT' }
       const token = jwt.sign(
         { sub: user.id, purpose: 'reset', fp: fingerprint(user.encrypted_password) },

@@ -5,10 +5,10 @@ export default function ReserveApprovalsPage() {
   return (
     <ApprovalQueue
       kind="reserve"
-      title="Reserve approval queue"
-      description="Reserve requests from adjusters. Approving moves the claim to compliance review; returning sends the assessment back for correction."
+      title="Reserve review queue"
+      description="Reserves above the adjuster's authority. Approving or modifying moves the claim to compliance review; returning sends the evaluation back for correction."
       load={approvalsService.reserveQueue}
-      decide={approvalsService.decideReserve}
+      decide={approvalsService.reviewReserve}
     />
   )
 }

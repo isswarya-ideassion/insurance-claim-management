@@ -3,24 +3,27 @@ import { AlertTriangle, ShieldAlert } from 'lucide-react'
 import { useAction } from '@/hooks/useApi.js'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog.js'
 import { Button } from '@/components/ui/button.js'
-import { Textarea } from '@/components/ui/input.js'
+import { Input, Textarea } from '@/components/ui/input.js'
 import { FormField, KeyValue } from '@/components/common/FormField.js'
 import { formatMoney } from '@/utils/format.js'
 import { cn } from '@/lib/utils.js'
 
 const DECISIONS = [
   { value: 'APPROVED', label: 'Approve', active: 'border-emerald-500 bg-emerald-50 text-emerald-800' },
+  { value: 'MODIFIED', label: 'Modify amount', active: 'border-violet-500 bg-violet-50 text-violet-800', modifyOnly: true },
   { value: 'RETURNED', label: 'Return for correction', active: 'border-orange-500 bg-orange-50 text-orange-800' },
   { value: 'REJECTED', label: 'Reject', active: 'border-red-500 bg-red-50 text-red-800' },
 ]
 
 /**
- * Financial decision dialog for reserves and settlements. The server enforces
- * approval limits and self-approval rules; canApprove/reason only guide the UI.
+ * Financial decision dialog for reserve reviews and settlement approval steps.
+ * The server enforces authority limits and separation of duties; canApprove and
+ * reason only guide the UI. allowModify adds the reserve "modify amount" outcome.
  */
-export function DecisionDialog({ open, onOpenChange, title, item, details = [], onDecide, complianceHold = false }) {
+export function DecisionDialog({ open, onOpenChange, title, item, details = [], onDecide, complianceHold = false, allowModify = false }) {
   const [decision, setDecision] = useState('APPROVED')
   const [comments, setComments] = useState('')
+  const [modifiedAmount, setModifiedAmount] = useState('')
   const action = useAction()
   const approveBlocked = item && (item.canApprove === false || complianceHold)
 
@@ -28,12 +31,14 @@ export function DecisionDialog({ open, onOpenChange, title, item, details = [], 
     if (open) {
       setDecision(approveBlocked ? 'RETURNED' : 'APPROVED')
       setComments('')
+      setModifiedAmount('')
     }
   }, [open])
 
   async function submit() {
-    const result = await action.run(() => onDecide({ decision, comments: comments || undefined }), {
-      success: decision === 'APPROVED' ? 'Approved' : decision === 'RETURNED' ? 'Returned for correction' : 'Rejected',
+    const body = { decision, comments: comments || undefined, ...(decision === 'MODIFIED' ? { modifiedAmount: Number(modifiedAmount) } : {}) }
+    const result = await action.run(() => onDecide(body), {
+      success: { APPROVED: 'Approved', MODIFIED: 'Modified amount recorded', RETURNED: 'Returned for correction', REJECTED: 'Rejected' }[decision],
     })
     if (result) onOpenChange(false)
   }
@@ -44,7 +49,7 @@ export function DecisionDialog({ open, onOpenChange, title, item, details = [], 
       <DialogContent className="max-w-xl">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>Decisions are recorded permanently with your approval limit at the time of decision.</DialogDescription>
+          <DialogDescription>Decisions are recorded permanently with your authority limit at the time of decision.</DialogDescription>
         </DialogHeader>
         {item && (
           <div className="rounded-lg border bg-muted/40 p-4">
@@ -63,8 +68,8 @@ export function DecisionDialog({ open, onOpenChange, title, item, details = [], 
             <AlertTriangle className="mt-0.5 size-4 shrink-0" /> {complianceHold ? 'An active compliance hold blocks approval.' : item.reason}
           </p>
         )}
-        <div className="grid gap-2 sm:grid-cols-3" role="radiogroup" aria-label="Decision">
-          {DECISIONS.map((d) => {
+        <div className={cn('grid gap-2', allowModify ? 'sm:grid-cols-4' : 'sm:grid-cols-3')} role="radiogroup" aria-label="Decision">
+          {DECISIONS.filter((d) => allowModify || !d.modifyOnly).map((d) => {
             const disabled = d.value === 'APPROVED' && approveBlocked
             return (
               <button
@@ -81,6 +86,11 @@ export function DecisionDialog({ open, onOpenChange, title, item, details = [], 
             )
           })}
         </div>
+        {decision === 'MODIFIED' && (
+          <FormField label="Modified reserve amount (₹)" required>
+            <Input type="number" min="0" step="0.01" value={modifiedAmount} onChange={(e) => setModifiedAmount(e.target.value)} />
+          </FormField>
+        )}
         <FormField label={needsComment ? 'Comments (required)' : 'Comments'} required={needsComment}>
           <Textarea value={comments} onChange={(e) => setComments(e.target.value)} placeholder={needsComment ? 'Explain what needs to change or why the request is rejected.' : 'Optional note for the record.'} />
         </FormField>
@@ -92,7 +102,7 @@ export function DecisionDialog({ open, onOpenChange, title, item, details = [], 
             variant={decision === 'REJECTED' ? 'destructive' : decision === 'APPROVED' ? 'accent' : 'default'}
             onClick={submit}
             loading={action.pending}
-            disabled={item?.canDecide === false || (needsComment && comments.trim().length < 5) || (decision === 'APPROVED' && approveBlocked)}
+            disabled={item?.canDecide === false || (needsComment && comments.trim().length < 5) || (decision === 'APPROVED' && approveBlocked) || (decision === 'MODIFIED' && !(Number(modifiedAmount) > 0))}
           >
             Confirm decision
           </Button>

@@ -98,10 +98,10 @@ export default function CustomerRecordDetailPage() {
             <TableBody>
               {policies.map((p) => (
                 <TableRow key={p.id}>
-                  <TableCell><p className="font-medium">{p.policy_number}</p><p className="text-xs text-muted-foreground">{p.insured_asset}</p></TableCell>
+                  <TableCell><p className="font-medium">{p.external_policy_no}</p><p className="text-xs text-muted-foreground">{p.insured_asset}</p></TableCell>
                   <TableCell>{POLICY_TYPE_LABELS[p.policy_type]}</TableCell>
                   <TableCell><StatusBadge value={p.status} /></TableCell>
-                  <TableCell className="whitespace-nowrap text-sm">{formatDate(p.effective_from)} – {formatDate(p.effective_to)}</TableCell>
+                  <TableCell className="whitespace-nowrap text-sm">{formatDate(p.effective_date)} – {formatDate(p.expiry_date)}</TableCell>
                   <TableCell className="tabular text-right">{formatMoney(p.sum_insured)}</TableCell>
                   <TableCell className="font-mono text-xs">{p.payout_account_masked || '—'}</TableCell>
                 </TableRow>
@@ -130,8 +130,8 @@ export default function CustomerRecordDetailPage() {
                 <TableRow key={c.id}>
                   <TableCell><p className="font-medium">{c.claim_number}</p><p className="text-xs text-muted-foreground">{c.policy_number}</p></TableCell>
                   <TableCell><Badge tone="navy">{STATUS_LABELS[c.status] || humanize(c.status)}</Badge></TableCell>
-                  <TableCell className="text-sm">{humanize(c.incident_category || '')} · {formatDate(c.incident_at)}</TableCell>
-                  <TableCell className="text-sm">{formatDate(c.submitted_at)}</TableCell>
+                  <TableCell className="text-sm">{humanize(c.loss_type || '')} · {formatDate(c.loss_date)}</TableCell>
+                  <TableCell className="text-sm">{formatDate(c.opened_at)}</TableCell>
                   <TableCell className="tabular text-right">{formatMoney(c.estimated_loss)}</TableCell>
                   <TableCell className="tabular text-right">{c.document_count}</TableCell>
                 </TableRow>
@@ -150,7 +150,7 @@ export default function CustomerRecordDetailPage() {
                 <TableRow>
                   <TableHead>File</TableHead>
                   <TableHead>Claim</TableHead>
-                  <TableHead>Category</TableHead>
+                  <TableHead>Type</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Uploaded</TableHead>
                   <TableHead><span className="sr-only">Actions</span></TableHead>
@@ -159,11 +159,11 @@ export default function CustomerRecordDetailPage() {
               <TableBody>
                 {documents.map((d) => (
                   <TableRow key={d.id}>
-                    <TableCell><p className="max-w-56 truncate font-medium">{d.file_name}</p><p className="text-xs text-muted-foreground">v{d.version_no} · {formatFileSize(d.size_bytes)}</p></TableCell>
+                    <TableCell><p className="max-w-56 truncate font-medium">{d.file_name}</p><p className="text-xs text-muted-foreground">v{d.version} · {formatFileSize(d.size_bytes)}</p></TableCell>
                     <TableCell>{d.claim_number}</TableCell>
-                    <TableCell>{humanize(d.category)}</TableCell>
+                    <TableCell>{humanize(d.doc_type)}</TableCell>
                     <TableCell><StatusBadge value={d.status} /></TableCell>
-                    <TableCell className="text-sm">{formatDateTime(d.uploaded_at)}</TableCell>
+                    <TableCell className="text-sm">{formatDateTime(d.received_at)}</TableCell>
                     <TableCell>
                       <div className="flex justify-end gap-1">
                         <Button size="icon-sm" variant="ghost" aria-label={`Preview ${d.file_name}`} onClick={() => open(d, 'inline')}><Eye /></Button>

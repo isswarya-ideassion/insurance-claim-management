@@ -13,24 +13,25 @@ export const listTasksQuery = paginationSchema.extend({
     .transform((v) => (v ? v.split(',') : undefined))
     .refine((l) => !l || l.every((s) => TASK_STATUSES.includes(s)), 'Invalid status'),
   overdue: z.enum(['true', 'false']).optional(),
+  unclaimed: z.enum(['true', 'false']).optional(),
 })
 
 export const createTaskSchema = z.object({
   claimId: z.string().uuid().optional().nullable(),
   title: z.string().trim().min(3).max(200),
   description: z.string().trim().max(2000).optional().nullable(),
-  taskType: z.enum(TASK_TYPES).default('GENERAL'),
+  type: z.enum(TASK_TYPES).default('GENERAL'),
   priority: z.enum(PRIORITIES).default('MEDIUM'),
-  isMandatory: z.boolean().default(false),
-  assigneeId: z.string().uuid().optional().nullable(),
-  assignedRole: z.enum(STAFF_ROLES).optional().nullable(),
+  blocking: z.boolean().default(false),
+  ownerUserId: z.string().uuid().optional().nullable(),
+  ownerRole: z.enum(STAFF_ROLES).optional().nullable(),
   dueAt: z.coerce.date().optional().nullable(),
 })
 
 export const updateTaskSchema = z
   .object({
     status: z.enum(TASK_STATUSES).optional(),
-    assigneeId: z.string().uuid().nullable().optional(),
+    ownerUserId: z.string().uuid().nullable().optional(),
     dueAt: z.coerce.date().nullable().optional(),
     priority: z.enum(PRIORITIES).optional(),
   })

@@ -1,9 +1,11 @@
 export { humanize } from '@shared/constants.js'
 
-const currency = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 })
-const compactCurrency = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', notation: 'compact', maximumFractionDigits: 1 })
-const dateFmt = new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
-const dateTimeFmt = new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+// Amounts are Indian rupees, grouped the Indian way (₹1,25,000.00).
+const currency = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 })
+const compactCurrency = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', notation: 'compact', maximumFractionDigits: 1 })
+// One date style everywhere: "27 Oct 2026" and "27 Oct 2026, 5:36 pm" in the viewer's time zone.
+const dateFmt = new Intl.DateTimeFormat('en-IN', { year: 'numeric', month: 'short', day: 'numeric' })
+const dateTimeFmt = new Intl.DateTimeFormat('en-IN', { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })
 const relative = new Intl.RelativeTimeFormat('en', { numeric: 'auto' })
 
 export function formatMoney(value, { compact = false } = {}) {
@@ -62,9 +64,29 @@ export function toDateInput(value) {
   return d.toISOString().slice(0, 10)
 }
 
+/** Address, city and country of a loss, as one line. */
+export function formatLocation(claim) {
+  return [claim?.loss_location, claim?.loss_city, claim?.loss_country].filter(Boolean).join(', ') || '—'
+}
+
+/** Today as a date input value (local time), for min/max on date pickers. */
+export function todayInput() {
+  return toDateTimeLocal(new Date()).slice(0, 10)
+}
+
 export function toDateTimeLocal(value) {
   if (!value) return ''
   const d = new Date(value)
   const pad = (n) => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+/** Describes a user's monetary authority (from /auth/me limits) for one limit type, per segment. */
+export function formatAuthority(limits, type) {
+  const bySegment = limits?.[type]
+  if (!bySegment) return 'none'
+  const parts = Object.entries(bySegment)
+    .filter(([, amount]) => amount != null)
+    .map(([segment, amount]) => `${segment.charAt(0)}${segment.slice(1).toLowerCase()} ${formatMoney(amount)}`)
+  return parts.length ? parts.join(' · ') : 'none'
 }

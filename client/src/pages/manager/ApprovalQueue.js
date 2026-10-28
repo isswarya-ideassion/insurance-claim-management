@@ -12,15 +12,16 @@ import { EmptyState } from '@/components/common/States.js'
 import { Button } from '@/components/ui/button.js'
 import { Tooltip } from '@/components/ui/misc.js'
 import { DecisionDialog } from '@/components/approvals/DecisionDialog.js'
-import { formatMoney, formatRelative, humanize } from '@/utils/format.js'
+import { ROLE_LABELS } from '@shared/constants.js'
+import { formatAuthority, formatMoney, formatRelative, humanize } from '@/utils/format.js'
 
-/** Shared queue for reserve and settlement approvals (separate records and endpoints). */
+/** Shared queue for reserve reviews and settlement approval steps (separate records and endpoints). */
 export function ApprovalQueue({ kind, title, description, load, decide }) {
   const { user, can } = useAuth()
   const { params, setParams } = useListParams()
   const query = useApiQuery(() => load(params), [params.page, params.pageSize])
   const [deciding, setDeciding] = useState(null)
-  const canDecide = can(kind === 'reserve' ? 'reserves.decide' : 'settlements.decide')
+  const canDecide = can(kind === 'reserve' ? 'reserves.review' : 'settlements.approve')
 
   const columns = [
     {
@@ -36,10 +37,12 @@ export function ApprovalQueue({ kind, title, description, load, decide }) {
     { key: 'amount', header: 'Requested', className: 'tabular font-semibold', cell: (r) => formatMoney(r.amount) },
     { key: 'claimed_amount', header: 'Claimed', className: 'tabular text-muted-foreground', cell: (r) => formatMoney(r.claimed_amount) },
     kind === 'settlement' && { key: 'approved_reserve', header: 'Approved reserve', className: 'tabular', cell: (r) => formatMoney(r.approved_reserve) },
-    kind === 'reserve' && { key: 'assessment', header: 'Recommendation', cell: (r) => (r.assessment ? `${humanize(r.assessment.recommendation)} · ${formatMoney(r.assessment.recommended_settlement)}` : '—') },
+    kind === 'reserve' && { key: 'evaluation', header: 'Evaluation', cell: (r) => (r.evaluation ? `${humanize(r.evaluation.decision)} · ${formatMoney(r.evaluation.recommended_settlement)}` : '—') },
+    kind === 'settlement' && { key: 'required_role', header: 'Approver', cell: (r) => ROLE_LABELS[r.required_role] || '—' },
+    { key: 'claim_segment', header: 'Segment', cell: (r) => humanize(r.claim_segment) },
     { key: 'claim_priority', header: 'Priority', cell: (r) => <PriorityBadge value={r.claim_priority} /> },
-    { key: 'requested_by_name', header: 'Requested by' },
-    { key: 'requested_at', header: 'Waiting', cell: (r) => formatRelative(r.requested_at) },
+    { key: 'requester', header: kind === 'reserve' ? 'Set by' : 'Prepared by', cell: (r) => (kind === 'reserve' ? r.set_by_name : r.requested_by_name) },
+    { key: 'waiting', header: 'Waiting', cell: (r) => formatRelative(kind === 'reserve' ? r.effective_at : r.requested_at) },
     {
       key: 'authority',
       header: 'Your authority',
@@ -65,7 +68,7 @@ export function ApprovalQueue({ kind, title, description, load, decide }) {
 
   return (
     <MotionPage>
-      <PageHeader title={title} description={`${description} Your approval limit: ${user.approvalLimit != null ? formatMoney(user.approvalLimit) : 'none'}.`} />
+      <PageHeader title={title} description={`${description} Your ${kind} authority: ${formatAuthority(user.limits, kind)}.`} />
       <div className="rounded-xl border bg-card shadow-sm">
         <DataTable rows={query.data} columns={columns} loading={query.loading} error={query.error} onRetry={query.reload} empty={<EmptyState icon={Gavel} title="No pending approvals" description="Requests awaiting a decision will appear here." />} />
         <Pagination meta={query.meta} onPageChange={(page) => setParams({ page }, { resetPage: false })} />
@@ -73,16 +76,17 @@ export function ApprovalQueue({ kind, title, description, load, decide }) {
       <DecisionDialog
         open={Boolean(deciding)}
         onOpenChange={(o) => !o && setDeciding(null)}
-        title={`${kind === 'reserve' ? 'Reserve' : 'Settlement'} decision — ${deciding?.claim_number || ''}`}
+        title={`${kind === 'reserve' ? 'Reserve review' : 'Settlement approval'} — ${deciding?.claim_number || ''}`}
+        allowModify={kind === 'reserve'}
         item={deciding}
         complianceHold={deciding?.compliance_hold}
         details={
           deciding
             ? [
                 { label: 'Claimant', value: deciding.customer_name },
-                { label: 'Requested by', value: deciding.requested_by_name },
-                kind === 'reserve' && deciding.assessment && { label: 'Findings', value: deciding.assessment.findings, wide: true },
-                kind === 'settlement' && { label: 'Beneficiary', value: `${deciding.beneficiary_name} · ${deciding.beneficiary_account_masked}` },
+                { label: kind === 'reserve' ? 'Set by' : 'Prepared by', value: kind === 'reserve' ? deciding.set_by_name : deciding.requested_by_name },
+                kind === 'reserve' && deciding.evaluation && { label: 'Findings', value: deciding.evaluation.findings, wide: true },
+                kind === 'settlement' && { label: 'Payee', value: `${deciding.payee_name} · ${deciding.payee_account_masked} · ${humanize(deciding.payee_verification)}` },
               ]
             : []
         }

@@ -79,6 +79,7 @@ export const api = {
   get: (path, params, opts) => request('GET', path, { ...opts, params }),
   post: (path, body, opts) => request('POST', path, { ...opts, body }),
   patch: (path, body, opts) => request('PATCH', path, { ...opts, body }),
+  put: (path, body, opts) => request('PUT', path, { ...opts, body }),
   delete: (path, opts) => request('DELETE', path, opts),
   upload: (path, formData) => request('POST', path, { body: formData }),
   blob: async (path, params) => {

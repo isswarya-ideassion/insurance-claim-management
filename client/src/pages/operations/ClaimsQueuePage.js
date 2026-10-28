@@ -5,7 +5,7 @@ import { useAuth } from '@/context/AuthContext.js'
 
 export default function ClaimsQueuePage() {
   const { hasRole } = useAuth()
-  const fullScope = hasRole('CLAIMS_OPERATIONS', 'CLAIMS_MANAGER', 'AUDITOR')
+  const fullScope = hasRole('CLAIMS_OPS_MANAGER', 'OPS_MANAGER', 'COMPLIANCE_SECURITY', 'DATA_ENGINEER')
   return (
     <MotionPage>
       <PageHeader

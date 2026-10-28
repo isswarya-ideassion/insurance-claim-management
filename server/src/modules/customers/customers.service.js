@@ -1,14 +1,14 @@
-import { ACTIVE_STATUSES } from '../../../../shared/constants.js'
+import { ACTIVE_STATUSES, INTERNAL_DOCUMENT_TYPES } from '../../../../shared/constants.js'
 import { notFound } from '../../utils/errors.js'
 import { escapeLike } from '../../db/queryBuilder.js'
-import { maskAccount } from '../../utils/format.js'
+import { maskLast4 } from '../../utils/format.js'
 import { pageMeta, toOffset } from '../../utils/http.js'
 import { requirePermission } from '../../services/access.service.js'
 import { recordAudit } from '../../services/audit.service.js'
 import { can } from '../../../../shared/permissions.js'
 
 // Internal evidence is never part of a customer record.
-const INTERNAL_CATEGORIES = ['INVESTIGATION_EVIDENCE', 'COMPLIANCE_EVIDENCE']
+const INTERNAL_CATEGORIES = INTERNAL_DOCUMENT_TYPES
 const EXPORT_LIMIT = 5000
 
 const SORT_COLUMNS = {
@@ -20,7 +20,7 @@ const SORT_COLUMNS = {
 }
 
 /**
- * One row per customer (a profile holding the CUSTOMER role) with aggregates.
+ * One row per client (a user holding the CLIENT role) with aggregates.
  * Draft claims are excluded: they are not part of the official record yet.
  * possible_duplicate flags another customer with the same phone digits or the
  * same normalized name; email is already unique, so this is a review hint only.
@@ -30,18 +30,18 @@ const CUSTOMER_ROWS = `
     select p.id, p.full_name, p.email, p.phone, p.is_active, p.created_at,
            regexp_replace(coalesce(p.phone, ''), '[^0-9]', '', 'g') as phone_digits,
            lower(btrim(p.full_name)) as name_key
-    from public.profiles p
-    where exists (select 1 from public.user_roles ur where ur.user_id = p.id and ur.role_code = 'CUSTOMER')
+    from public.users p
+    where exists (select 1 from public.user_roles ur where ur.user_id = p.id and ur.role_code = 'CLIENT')
   )
   select c.id, c.full_name, c.email, c.phone, c.is_active, c.created_at, c.phone_digits,
-    (select count(*)::int from public.policies po where po.holder_id = c.id) as policy_count,
-    (select string_agg(po.policy_number, ', ' order by po.policy_number) from public.policies po where po.holder_id = c.id) as policy_numbers,
+    (select count(*)::int from public.policies po where po.insured_id = c.id) as policy_count,
+    (select string_agg(po.external_policy_no, ', ' order by po.external_policy_no) from public.policies po where po.insured_id = c.id) as policy_numbers,
     (select count(*)::int from public.claims cl where cl.customer_id = c.id and cl.status <> 'DRAFT') as claim_count,
     (select count(*)::int from public.claims cl where cl.customer_id = c.id and cl.status = any($1::text[])) as open_claim_count,
-    (select max(cl.submitted_at) from public.claims cl where cl.customer_id = c.id) as last_claim_at,
+    (select max(cl.opened_at) from public.claims cl where cl.customer_id = c.id) as last_claim_at,
     greatest(c.created_at,
       (select max(cl.updated_at) from public.claims cl where cl.customer_id = c.id and cl.status <> 'DRAFT'),
-      (select max(po.updated_at) from public.policies po where po.holder_id = c.id)) as last_activity_at,
+      (select max(po.updated_at) from public.policies po where po.insured_id = c.id)) as last_activity_at,
     exists (
       select 1 from customers d where d.id <> c.id and (
         (length(c.phone_digits) >= 7 and d.phone_digits = c.phone_digits)
@@ -68,10 +68,10 @@ function buildFilters(query, params) {
     where.push(`(${parts.join(' or ')})`)
   }
   if (query.policyType) {
-    where.push(`exists (select 1 from public.policies po where po.holder_id = x.id and po.policy_type = ${add(query.policyType)})`)
+    where.push(`exists (select 1 from public.policies po where po.insured_id = x.id and po.policy_type = ${add(query.policyType)})`)
   }
   if (query.policyStatus) {
-    where.push(`exists (select 1 from public.policies po where po.holder_id = x.id and po.status = ${add(query.policyStatus)})`)
+    where.push(`exists (select 1 from public.policies po where po.insured_id = x.id and po.status = ${add(query.policyStatus)})`)
   }
   if (query.hasOpenClaims === 'true') where.push('x.open_claim_count > 0')
   if (query.hasOpenClaims === 'false') where.push('x.open_claim_count = 0')
@@ -127,30 +127,32 @@ export async function getCustomer(ctx, customerId) {
   const row = await loadCustomer(ctx.db, customerId)
   const showDocuments = can(ctx.actor.roles, 'customers.viewDocuments')
 
-  const [policies, claims, documents, duplicates] = await Promise.all([
+  const [policies, claims, documents, duplicates, consents] = await Promise.all([
     ctx.db.query(
-      `select id, policy_number, policy_type, insured_name, status, effective_from, effective_to, sum_insured,
-              deductible, insured_asset, payout_bank_name, payout_account_number, created_at
-       from public.policies where holder_id = $1 order by effective_from desc`,
+      `select po.id, po.external_policy_no, po.policy_type, po.segment, po.insured_name, po.status, po.effective_date,
+              po.expiry_date, po.sum_insured, po.deductible, po.insured_asset, py.bank_name as payout_bank_name,
+              py.bank_last4, py.verification_status as payee_verification, po.created_at
+       from public.policies po left join public.payees py on py.id = po.payee_id
+       where po.insured_id = $1 order by po.effective_date desc`,
       [customerId],
     ),
     ctx.db.query(
-      `select c.id, c.claim_number, c.status, c.claim_type, c.priority, c.incident_at, c.incident_category,
-              c.estimated_loss, c.submitted_at, c.closed_at, c.updated_at, p.policy_number,
+      `select c.id, c.claim_number, c.status, c.stage, c.claim_type, c.segment, c.priority, c.loss_date, c.loss_type,
+              c.estimated_loss, c.opened_at, c.closed_at, c.updated_at, p.external_policy_no as policy_number,
               (select count(*)::int from public.documents d where d.claim_id = c.id
-                 and d.category <> all($2::text[]) and d.status <> 'SUPERSEDED') as document_count
+                 and d.doc_type <> all($2::text[])) as document_count
        from public.claims c left join public.policies p on p.id = c.policy_id
        where c.customer_id = $1 and c.status <> 'DRAFT'
-       order by c.submitted_at desc nulls last`,
+       order by c.opened_at desc nulls last`,
       [customerId, INTERNAL_CATEGORIES],
     ),
     showDocuments
       ? ctx.db.query(
-          `select d.id, d.claim_id, c.claim_number, d.category, d.file_name, d.mime_type, d.size_bytes, d.status,
-                  d.version_no, d.uploaded_at
+          `select d.id, d.claim_id, c.claim_number, d.doc_type, d.file_name, d.mime_type, d.size_bytes, d.status,
+                  d.version, d.received_at
            from public.documents d join public.claims c on c.id = d.claim_id
-           where c.customer_id = $1 and c.status <> 'DRAFT' and d.category <> all($2::text[])
-           order by d.uploaded_at desc`,
+           where c.customer_id = $1 and c.status <> 'DRAFT' and d.doc_type <> all($2::text[])
+           order by d.received_at desc`,
           [customerId, INTERNAL_CATEGORIES],
         )
       : Promise.resolve(null),
@@ -158,28 +160,34 @@ export async function getCustomer(ctx, customerId) {
       `select p.id, p.full_name, p.email,
               case when regexp_replace(coalesce(p.phone, ''), '[^0-9]', '', 'g') = $2 and length($2) >= 7 then 'Same phone number'
                    else 'Same name' end as reason
-       from public.profiles p
+       from public.users p
        where p.id <> $1
-         and exists (select 1 from public.user_roles ur where ur.user_id = p.id and ur.role_code = 'CUSTOMER')
+         and exists (select 1 from public.user_roles ur where ur.user_id = p.id and ur.role_code = 'CLIENT')
          and ((length($2) >= 7 and regexp_replace(coalesce(p.phone, ''), '[^0-9]', '', 'g') = $2)
               or (btrim($3) <> '' and lower(btrim(p.full_name)) = lower(btrim($3))))
        order by p.full_name`,
       [customerId, row.phone_digits, row.full_name],
     ),
+    ctx.db.query(
+      `select consent_type, notice_version, granted, channel, recorded_at, withdrawn_at
+       from public.consents where subject_id = $1 order by recorded_at desc`,
+      [customerId],
+    ),
   ])
 
   await recordAudit(ctx.db, ctx.actor, {
     action: 'CUSTOMER_RECORD_VIEWED',
-    entityType: 'profile',
+    entityType: 'user',
     entityId: customerId,
   })
 
   return {
     customer: presentRow(row, years),
-    policies: policies.map(({ payout_account_number: account, ...p }) => ({ ...p, payout_account_masked: maskAccount(account) })),
+    policies: policies.map(({ bank_last4: last4, ...p }) => ({ ...p, payout_account_masked: maskLast4(last4) })),
     claims,
     documents,
     possibleDuplicates: duplicates,
+    consents,
     retention: {
       years,
       retainUntil: retainUntil(row.last_activity_at, years),
@@ -224,7 +232,7 @@ export async function exportCustomers(ctx, query) {
   const { page: _p, pageSize: _s, ...filters } = query
   await recordAudit(ctx.db, ctx.actor, {
     action: 'CUSTOMER_RECORDS_EXPORTED',
-    entityType: 'profile',
+    entityType: 'user',
     metadata: { filters, rows: rows.length, totalMatching: total, truncated: total > rows.length },
   })
   return { csv: `${lines.join('\n')}\n`, rows: rows.length, truncated: total > rows.length }
@@ -234,11 +242,11 @@ export async function downloadCustomerDocument(ctx, customerId, documentId) {
   requirePermission(ctx.actor, 'customers.viewDocuments')
   const [doc] = await ctx.db.query(
     `select d.* from public.documents d join public.claims c on c.id = d.claim_id
-     where d.id = $1 and c.customer_id = $2 and c.status <> 'DRAFT' and d.category <> all($3::text[])`,
+     where d.id = $1 and c.customer_id = $2 and c.status <> 'DRAFT' and d.doc_type <> all($3::text[])`,
     [documentId, customerId, INTERNAL_CATEGORIES],
   )
   if (!doc) throw notFound('Document not found')
-  const buffer = await ctx.storage.get(doc.storage_path)
+  const buffer = await ctx.storage.get(doc.storage_key)
   await recordAudit(ctx.db, ctx.actor, {
     action: 'DOCUMENT_DOWNLOADED',
     entityType: 'document',

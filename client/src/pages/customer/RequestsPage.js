@@ -1,3 +1,4 @@
+import { ARTIFACT_STATUS_LABELS } from '@shared/constants.js'
 import { documentsService } from '@/services/documentsService.js'
 import { useApiQuery } from '@/hooks/useApi.js'
 import { useListParams } from '@/hooks/useListParams.js'
@@ -9,13 +10,13 @@ import { Select } from '@/components/ui/select.js'
 import { InformationRequestList } from '@/components/documents/InformationRequests.js'
 
 export default function RequestsPage() {
-  const { params, setParams } = useListParams({ status: 'OPEN' })
+  const { params, setParams } = useListParams({ status: 'REQUESTED' })
   const query = useApiQuery(() => documentsService.requests(params), [JSON.stringify(params)])
   return (
     <MotionPage className="max-w-4xl">
       <PageHeader title="Information requests" description="Documents or details our team needs to continue with your claims." />
       <div className="mb-4 w-52">
-        <Select aria-label="Request status" allowClear placeholder="All requests" value={params.status || ''} onValueChange={(status) => setParams({ status })} options={[{ value: 'OPEN', label: 'Open' }, { value: 'RESPONDED', label: 'Responded' }, { value: 'CLOSED', label: 'Closed' }]} />
+        <Select aria-label="Request status" allowClear placeholder="All requests" value={params.status || ''} onValueChange={(status) => setParams({ status })} options={['REQUESTED', 'RECEIVED', 'ACCEPTED', 'CLOSED', 'CANCELLED'].map((s) => ({ value: s, label: ARTIFACT_STATUS_LABELS[s] }))} />
       </div>
       <QueryState query={query}>
         {(rows, meta) => (

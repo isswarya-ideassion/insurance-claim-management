@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { INDIAN_MOBILE_MESSAGE, indianMobileDigits } from '@shared/constants.js'
 
 const password = z
   .string()
@@ -19,8 +20,7 @@ export const registerSchema = z
     phone: z
       .string()
       .trim()
-      .regex(/^\+?[0-9 ()-]{7,20}$/, 'Enter a valid phone number')
-      .or(z.literal('')),
+      .refine((v) => v === '' || indianMobileDigits(v) !== null, INDIAN_MOBILE_MESSAGE),
     password,
     confirmPassword: z.string(),
     terms: z.literal(true, { errorMap: () => ({ message: 'You must accept the terms to continue' }) }),

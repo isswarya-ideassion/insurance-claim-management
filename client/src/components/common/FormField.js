@@ -47,7 +47,8 @@ export function KeyValue({ items, columns = 2, className }) {
 
 export function SectionCard({ title, description, actions, children, className, bodyClassName }) {
   return (
-    <section className={cn('rounded-xl border bg-card shadow-sm', className)}>
+    // min-w-0 lets a card shrink inside grid and flex layouts, so wide tables scroll within the card instead of widening the page.
+    <section className={cn('min-w-0 rounded-xl border bg-card shadow-sm', className)}>
       {(title || actions) && (
         <div className="flex flex-wrap items-start justify-between gap-3 border-b px-5 py-4">
           <div>

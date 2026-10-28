@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 // Regenerates the claim status transition reference-data migration from the
 // single source of truth in shared/workflow.js. Run: npm run db:transitions-sql
+// Earlier generated migrations stay unchanged; this file is the current one.
 import { writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { TRANSITIONS } from '../../shared/workflow.js'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
-const target = path.resolve(here, '../../supabase/migrations/20261019000003_workflow_transitions.sql')
+const target = path.resolve(here, '../../database/migrations/20261027000013_workflow_transitions.sql')
 
 const quote = (s) => `'${String(s).replace(/'/g, "''")}'`
 const rows = TRANSITIONS.map(

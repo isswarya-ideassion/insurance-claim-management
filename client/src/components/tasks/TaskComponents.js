@@ -15,7 +15,7 @@ import { Input, Textarea } from '@/components/ui/input.js'
 import { Select } from '@/components/ui/select.js'
 import { Checkbox } from '@/components/ui/misc.js'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog.js'
-import { formatDateTime, formatRelative } from '@/utils/format.js'
+import { formatDateTime, formatRelative, toDateTimeLocal } from '@/utils/format.js'
 import { cn } from '@/lib/utils.js'
 
 export function TaskTable({ rows, loading, error, onRetry, onChanged, showClaim = true, compact = false }) {
@@ -36,7 +36,7 @@ export function TaskTable({ rows, loading, error, onRetry, onChanged, showClaim 
         <div className="min-w-[14rem]">
           <p className="font-medium">
             {t.title}
-            {t.is_mandatory && <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-slate-600">Mandatory</span>}
+            {t.blocking && <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-slate-600">Blocking</span>}
           </p>
           {t.description && <p className="line-clamp-1 text-xs text-muted-foreground">{t.description}</p>}
         </div>
@@ -47,8 +47,8 @@ export function TaskTable({ rows, loading, error, onRetry, onChanged, showClaim 
       header: 'Claim',
       cell: (t) => (t.claim_id ? <Link to={`/claims/${t.claim_id}?tab=tasks`} className="text-primary hover:underline">{t.claim_number}</Link> : '—'),
     },
-    { key: 'task_type', header: 'Type', cell: (t) => humanize(t.task_type) },
-    { key: 'assignee', header: 'Assignee', cell: (t) => t.assignee_name || (t.assigned_role ? `${ROLE_LABELS[t.assigned_role]} team` : 'Unassigned') },
+    { key: 'type', header: 'Type', cell: (t) => humanize(t.type) },
+    { key: 'owner', header: 'Owner', cell: (t) => t.owner_name || (t.owner_role ? `${ROLE_LABELS[t.owner_role]} queue` : 'Unassigned') },
     { key: 'priority', header: 'Priority', cell: (t) => <PriorityBadge value={t.priority} /> },
     {
       key: 'due_at',
@@ -71,14 +71,14 @@ export function TaskTable({ rows, loading, error, onRetry, onChanged, showClaim 
         ['OPEN', 'IN_PROGRESS'].includes(t.status) ? (
           <div className="flex justify-end gap-1">
             {t.status === 'OPEN' && (
-              <Button size="icon-sm" variant="ghost" aria-label="Start task" title="Start" onClick={() => update(t, { status: 'IN_PROGRESS', ...(t.assignee_id ? {} : { assigneeId: user.id }) }, 'Task started')}>
+              <Button size="icon-sm" variant="ghost" aria-label="Start task" title="Start" onClick={() => update(t, { status: 'IN_PROGRESS', ...(t.owner_user_id ? {} : { ownerUserId: user.id }) }, 'Task started')}>
                 <Play />
               </Button>
             )}
             <Button size="icon-sm" variant="ghost" aria-label="Complete task" title="Complete" onClick={() => update(t, { status: 'DONE' }, 'Task completed')}>
               <Check />
             </Button>
-            {(!t.is_mandatory || user.roles.includes('CLAIMS_MANAGER')) && (
+            {(!t.blocking || user.roles.some((r) => ['OPS_MANAGER', 'CLAIMS_OPS_MANAGER'].includes(r))) && (
               <Button size="icon-sm" variant="ghost" aria-label="Cancel task" title="Cancel" onClick={() => update(t, { status: 'CANCELLED' }, 'Task cancelled')}>
                 <X />
               </Button>
@@ -88,7 +88,7 @@ export function TaskTable({ rows, loading, error, onRetry, onChanged, showClaim 
     },
   ]
     .filter(Boolean)
-    .filter((c) => !compact || !['task_type', 'assignee', 'priority'].includes(c.key))
+    .filter((c) => !compact || !['type', 'owner', 'priority'].includes(c.key))
 
   return (
     <DataTable
@@ -110,9 +110,8 @@ export function CreateTaskDialog({ open, onOpenChange, claimId, onCreated }) {
 
   useEffect(() => {
     if (!open) return
-    setForm({ title: '', description: '', taskType: 'GENERAL', priority: 'MEDIUM', isMandatory: false, assigneeId: '', assignedRole: '', dueAt: '' })
-    const roles = ['CLAIMS_OPERATIONS', 'DOCUMENT_REVIEWER', 'CLAIMS_ADJUSTER', 'CLAIMS_MANAGER', 'COMPLIANCE_OFFICER', 'PAYMENT_OPERATIONS']
-    Promise.all(roles.map((r) => claimsService.assignees(r).catch(() => [])))
+    setForm({ title: '', description: '', type: 'GENERAL', priority: 'MEDIUM', blocking: false, ownerUserId: '', ownerRole: '', dueAt: '' })
+    Promise.all(STAFF_ROLES.map((r) => claimsService.assignees(r).catch(() => [])))
       .then((lists) => {
         const map = new Map()
         lists.flat().forEach((u) => map.set(u.id, u))
@@ -127,11 +126,11 @@ export function CreateTaskDialog({ open, onOpenChange, claimId, onCreated }) {
       claimId: claimId || undefined,
       title: form.title,
       description: form.description || undefined,
-      taskType: form.taskType,
+      type: form.type,
       priority: form.priority,
-      isMandatory: form.isMandatory,
-      assigneeId: form.assigneeId || undefined,
-      assignedRole: form.assignedRole || undefined,
+      blocking: form.blocking,
+      ownerUserId: form.ownerUserId || undefined,
+      ownerRole: form.ownerRole || undefined,
       dueAt: form.dueAt ? new Date(form.dueAt).toISOString() : undefined,
     }
     const result = await action.run(() => tasksService.create(body), { success: 'Task created' })
@@ -156,23 +155,23 @@ export function CreateTaskDialog({ open, onOpenChange, claimId, onCreated }) {
             <Textarea value={form.description || ''} onChange={set('description')} />
           </FormField>
           <FormField label="Type">
-            <Select value={form.taskType} onValueChange={set('taskType')} options={TASK_TYPES.map((t) => ({ value: t, label: humanize(t) }))} />
+            <Select value={form.type} onValueChange={set('type')} options={TASK_TYPES.map((t) => ({ value: t, label: humanize(t) }))} />
           </FormField>
           <FormField label="Priority">
             <Select value={form.priority} onValueChange={set('priority')} options={PRIORITIES.map((p) => ({ value: p, label: humanize(p) }))} />
           </FormField>
-          <FormField label="Assignee">
-            <Select value={form.assigneeId} onValueChange={set('assigneeId')} allowClear placeholder="Unassigned" options={staff.map((s) => ({ value: s.id, label: s.full_name }))} />
+          <FormField label="Owner">
+            <Select value={form.ownerUserId} onValueChange={set('ownerUserId')} allowClear placeholder="Unassigned" options={staff.map((s) => ({ value: s.id, label: s.full_name }))} />
           </FormField>
-          <FormField label="Or team">
-            <Select value={form.assignedRole} onValueChange={set('assignedRole')} allowClear placeholder="No team" options={STAFF_ROLES.filter((r) => !['AUDITOR', 'DATA_ADMIN', 'CUSTOMER_RECORDS_ADMIN'].includes(r)).map((r) => ({ value: r, label: ROLE_LABELS[r] }))} />
+          <FormField label="Or role queue">
+            <Select value={form.ownerRole} onValueChange={set('ownerRole')} allowClear placeholder="No queue" options={STAFF_ROLES.map((r) => ({ value: r, label: ROLE_LABELS[r] }))} />
           </FormField>
           <FormField label="Due">
-            <Input type="datetime-local" value={form.dueAt || ''} onChange={set('dueAt')} />
+            <Input type="datetime-local" min={toDateTimeLocal(new Date())} value={form.dueAt || ''} onChange={set('dueAt')} />
           </FormField>
           <label className="flex items-center gap-2 self-end pb-2 text-sm">
-            <Checkbox checked={form.isMandatory} onCheckedChange={(v) => set('isMandatory')(v === true)} />
-            Mandatory (blocks claim closure)
+            <Checkbox checked={form.blocking} onCheckedChange={(v) => set('blocking')(v === true)} />
+            Blocking (must be done before the claim moves on)
           </label>
         </div>
         <DialogFooter>
