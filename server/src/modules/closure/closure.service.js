@@ -135,6 +135,7 @@ export async function createRecovery(ctx, claimId, input) {
       expected_amount: input.expectedAmount ?? null,
       deadline: input.deadline || null,
       status: 'IDENTIFIED',
+      ai_run_ref: input.aiRunRef || null,
       created_by: ctx.actor.id,
       updated_by: ctx.actor.id,
     })

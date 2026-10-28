@@ -15,6 +15,7 @@ The application uses one PostgreSQL 14+ database for everything: application dat
 | `20261026000011_workflow_transitions.sql` | **Generated** transition table with the Claims Operations Manager on intake, routing and holds |
 | `20261027000012_adjuster_settlement_authority.sql` | Adjusters approve settlements on their claims within their settlement limit (15,000 personal, 30,000 commercial); Payment Operator settlement limits end; `enforce_settlement_step` updated; pending Payment Operator steps re-routed; adjusters added to the `payments` and `settlement_approval_steps` read policies |
 | `20261027000013_workflow_transitions.sql` | **Generated** transition table: adjusters release approved settlements for payment |
+| `20261028000015_claim_agents.sql` | Claim agents: `recoveries.ai_run_ref`; Payment Operators added to the `ai_runs` read policy; `ai_runs_protect_output` lets an accepted run gain applied parts (triage), never change its decision |
 | `20261027000014_ui_enhancements.sql` | `claims.loss_city` and `loss_country`; currency defaults and existing rows changed to `INR` (codes only, amounts unchanged); past rejection notifications relabelled `CLAIM_REJECTED` / `APPROVAL_REJECTED`; new `policy_renewal_requests` table with RLS |
 
 `database/seed.sql` inserts the eight reference roles only and is re-applied after migrations (idempotent). It never creates users.

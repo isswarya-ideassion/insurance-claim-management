@@ -1,7 +1,10 @@
 import { Router } from 'express'
 import rateLimit from 'express-rate-limit'
 import { authenticate } from '../middleware/auth.js'
+import { timingSafeEqual } from 'node:crypto'
 import { ok } from '../utils/http.js'
+import { notFound, unauthorized } from '../utils/errors.js'
+import { runScheduledJobs } from '../jobs.js'
 import { authRoutes } from '../modules/auth/auth.routes.js'
 import { policiesRoutes } from '../modules/policies/policies.routes.js'
 import { claimsRoutes } from '../modules/claims/claims.routes.js'
@@ -36,6 +39,19 @@ export function createApiRouter(config) {
       time: new Date().toISOString(),
     }),
   )
+
+  // Scheduled jobs for hosts without a long-running process (Vercel Cron sends Authorization: Bearer <CRON_SECRET>).
+  router.get('/internal/cron/jobs', async (req, res, next) => {
+    try {
+      if (!config.CRON_SECRET) throw notFound()
+      const given = Buffer.from(String(req.get('authorization') || ''))
+      const expected = Buffer.from(`Bearer ${config.CRON_SECRET}`)
+      if (given.length !== expected.length || !timingSafeEqual(given, expected)) throw unauthorized('Invalid cron credentials')
+      ok(res, { jobs: await runScheduledJobs(req.app.locals.deps), at: new Date().toISOString() })
+    } catch (err) {
+      next(err)
+    }
+  })
 
   const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,

@@ -454,7 +454,29 @@ export function humanize(value) {
 export const AI_AGENTS = Object.freeze({
   INTAKE_PARSER: 'intake-parser',
   CLAIM_SUMMARIZER: 'claim-summarizer',
+  COVERAGE_CHECKER: 'coverage-checker',
+  TRIAGE_ROUTER: 'triage-router',
+  RESERVE_RECOMMENDER: 'reserve-recommender',
+  DENIAL_DRAFTER: 'denial-letter-drafter',
+  PAYEE_ANOMALY: 'payee-anomaly',
+  SUBROGATION_ASSESSOR: 'subrogation-assessor',
 })
+
+/**
+ * Claim agents (PRD section 3): who may run each one, which claim tab shows it,
+ * and who may apply its suggestion. Viewing also needs access to that tab.
+ */
+export const CLAIM_AGENTS = {
+  'coverage-checker': { label: 'Coverage check', tab: 'policy', run: 'ai.coverageCheck', apply: 'claims.verifyCoverage' },
+  'triage-router': { label: 'Triage, fraud and routing', tab: 'overview', run: 'ai.triage', apply: 'claims.assignAdjuster' },
+  'reserve-recommender': { label: 'Reserve recommendation', tab: 'reserves', run: 'ai.reserve', apply: 'reserves.set' },
+  'denial-letter-drafter': { label: 'Denial letter', tab: 'investigation', run: 'ai.denialLetter', apply: 'ai.denialLetterApprove' },
+  'payee-anomaly': { label: 'Payee anomaly check', tab: 'approvals', run: 'ai.payeeCheck', apply: 'ai.payeeCheck' },
+  'subrogation-assessor': { label: 'Subrogation and salvage', tab: 'recovery', run: 'ai.subrogation', apply: 'recoveries.write' },
+}
+
+/** Anomaly codes the payee agent may return (PRD 3.7). */
+export const PAYEE_ANOMALY_CODES = ['NEW_BANK_DETAILS', 'RECENT_BANK_CHANGE', 'NAME_MISMATCH', 'DUPLICATE_PAYEE', 'PAYEE_ON_MULTIPLE_CLAIMS', 'THIRD_PARTY_PAYEE']
 export const AI_HUMAN_DECISIONS = ['PENDING', 'ACCEPTED', 'REJECTED', 'NOT_REQUIRED']
 /** Confidence bands for the 0–1 confidence values agents return (PRD FR-X4). */
 export function confidenceBand(value) {

@@ -16,6 +16,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { DecisionDialog } from '@/components/approvals/DecisionDialog.js'
 import { SimulatedNotice } from '@/components/payments/PaymentDetailPanel.js'
 import { formatDateTime, formatMoney, humanize } from '@/utils/format.js'
+import { PayeeAgentCard, ReserveAgentCard } from '@/components/automation/AgentPanels.js'
 
 // System-recorded ledger entries (manager modifications, payments, closure releases) cannot be entered by hand.
 const MANUAL_REASON_CODES = RESERVE_REASON_CODES.filter((c) => !['MANAGER_MODIFIED', 'PAYMENT_ISSUED', 'CLOSURE_RELEASE'].includes(c))
@@ -73,6 +74,7 @@ export function ReservesTab({ detail, reload }) {
     reload()
   }
   return (
+    <div className="space-y-5">
     <SectionCard
       title="Reserve ledger"
       description="Every reserve change is an immutable entry. Entries within the adjuster's authority post directly; larger ones need Claims Manager review."
@@ -128,6 +130,8 @@ export function ReservesTab({ detail, reload }) {
       />
       <ReviseReserveDialog open={revising} onOpenChange={setRevising} claimId={claim.id} onSaved={refresh} />
     </SectionCard>
+    <ReserveAgentCard claim={claim} onApplied={refresh} />
+    </div>
   )
 }
 
@@ -215,6 +219,7 @@ export function ApprovalsTab({ detail, reload }) {
           return result
         }}
       />
+      <PayeeAgentCard claim={claim} onApplied={reload} />
     </div>
   )
 }

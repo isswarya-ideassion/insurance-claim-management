@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Download, FileUp, UploadCloud } from 'lucide-react'
-import { DOCUMENT_TYPES, INTERNAL_DOCUMENT_TYPES, ALLOWED_UPLOAD_MIME_TYPES, MAX_UPLOAD_BYTES, humanize } from '@shared/constants.js'
+import { DOCUMENT_TYPES, INTERNAL_DOCUMENT_TYPES, ALLOWED_UPLOAD_MIME_TYPES, humanize } from '@shared/constants.js'
 import { documentsService, saveBlob } from '@/services/documentsService.js'
 import { useAction } from '@/hooks/useApi.js'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog.js'
@@ -9,6 +9,7 @@ import { Textarea } from '@/components/ui/input.js'
 import { Select } from '@/components/ui/select.js'
 import { FormField } from '@/components/common/FormField.js'
 import { formatFileSize } from '@/utils/format.js'
+import { MAX_UPLOAD_MB } from '@/constants/config.js'
 import { cn } from '@/lib/utils.js'
 
 const CUSTOMER_DOC_TYPES = DOCUMENT_TYPES.filter((c) => !INTERNAL_DOCUMENT_TYPES.includes(c))
@@ -33,7 +34,7 @@ export function UploadDocumentDialog({ open, onOpenChange, claimId, customer = f
     setLocalError(null)
     if (!f) return
     if (!ALLOWED_UPLOAD_MIME_TYPES.includes(f.type)) return setLocalError('Only PDF, JPEG, PNG or WebP files are accepted.')
-    if (f.size > MAX_UPLOAD_BYTES) return setLocalError('Files must be 10 MB or smaller.')
+    if (f.size > MAX_UPLOAD_MB * 1024 * 1024) return setLocalError(`Files must be ${MAX_UPLOAD_MB} MB or smaller.`)
     setFile(f)
   }
 
@@ -54,7 +55,7 @@ export function UploadDocumentDialog({ open, onOpenChange, claimId, customer = f
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{replaces ? `Upload new version of ${replaces.file_name}` : 'Upload document'}</DialogTitle>
-          <DialogDescription>Files are stored privately and are only visible to people authorized for this claim. PDF, JPEG, PNG or WebP up to 10 MB.</DialogDescription>
+          <DialogDescription>Files are stored privately and are only visible to people authorized for this claim. PDF, JPEG, PNG or WebP up to {MAX_UPLOAD_MB} MB.</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <FormField label="Document type" required>

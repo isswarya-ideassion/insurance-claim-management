@@ -1,13 +1,28 @@
 import { Router } from 'express'
 import { validate } from '../../middleware/validate.js'
 import * as controller from './automation.controller.js'
-import { applyExtractionSchema, approveReminderSchema, idParams, listRemindersQuery, reminderDraftSchema } from './automation.validators.js'
+import {
+  agentParams,
+  applyAgentSchema,
+  applyExtractionSchema,
+  approveReminderSchema,
+  discardAgentSchema,
+  idParams,
+  listRemindersQuery,
+  reminderDraftSchema,
+} from './automation.validators.js'
 
 export function automationRoutes() {
   const router = Router()
   const byId = validate({ params: idParams })
 
   router.get('/automation/status', controller.status)
+
+  // Claim agents (PRD section 3): coverage, triage, reserve, denial letter, payee and subrogation
+  router.get('/claims/:id/agents/:agent', validate({ params: agentParams }), controller.listAgentRuns)
+  router.post('/claims/:id/agents/:agent', validate({ params: agentParams }), controller.runAgent)
+  router.post('/agent-runs/:id/apply', validate({ params: idParams, body: applyAgentSchema }), controller.applyAgentRun)
+  router.post('/agent-runs/:id/discard', validate({ params: idParams, body: discardAgentSchema }), controller.discardAgentRun)
 
   // B + D. Missing-document detection and reminders (rule-based)
   router.get('/claims/:id/automation/document-checklist', byId, controller.documentChecklist)

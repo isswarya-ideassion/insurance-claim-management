@@ -11,6 +11,10 @@ export const TEST_SETTINGS = {
   EMAIL_ADAPTER: 'console',
   OVERDUE_SWEEP_MINUTES: '0',
   DATABASE_SSL: 'disable',
+  // Tests never call a real AI provider, whatever server/.env says; AI tests install a test double.
+  AI_PROVIDER: 'none',
+  MAX_UPLOAD_MB: '10',
+  CRON_SECRET: 'test-only-cron-secret-0123456789',
 }
 
 /** Connection to an existing database on the test server (used to create and drop test databases). */

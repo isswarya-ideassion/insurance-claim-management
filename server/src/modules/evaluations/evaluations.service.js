@@ -95,7 +95,7 @@ export async function updateEvaluation(ctx, id, input) {
  * adjuster's authority it is posted; above it, it waits for manager review.
  * Earlier active or pending entries of the line are superseded.
  */
-export async function setReserve(ctx, t, claim, { evaluationId = null, coverageLine, amount, reasonCode = 'INITIAL', notes = null }) {
+export async function setReserve(ctx, t, claim, { evaluationId = null, coverageLine, amount, reasonCode = 'INITIAL', notes = null, aiRunRef = null }) {
   const line = coverageLine || defaultCoverageLine(claim.claim_type)
   if (!(COVERAGE_LINES[claim.claim_type] || [line]).includes(line)) {
     throw validationError(`Coverage line ${line} does not apply to a ${claim.claim_type} claim`)
@@ -120,6 +120,7 @@ export async function setReserve(ctx, t, claim, { evaluationId = null, coverageL
     created_by: ctx.actor.id,
     authority_ok: withinAuthority,
     approval_status: withinAuthority ? 'POSTED' : 'PENDING_REVIEW',
+    ai_run_ref: aiRunRef,
   })
   await recordAudit(t, ctx.actor, {
     action: withinAuthority ? 'RESERVE_POSTED' : 'RESERVE_ESCALATED',

@@ -4,8 +4,9 @@ import { KeyValue, SectionCard } from '@/components/common/FormField.js'
 import { StatusBadge } from '@/components/common/StatusBadge.js'
 import { EmptyState } from '@/components/common/States.js'
 import { formatDate, formatMoney } from '@/utils/format.js'
+import { CoverageAgentCard } from '@/components/automation/AgentPanels.js'
 
-export function PolicyTab({ detail }) {
+export function PolicyTab({ detail, reload }) {
   const { policy, eligibility, customer } = detail
   if (!policy) return <EmptyState title="No policy linked" />
   return (
@@ -45,6 +46,9 @@ export function PolicyTab({ detail }) {
           <p className="text-sm text-muted-foreground">Not available.</p>
         )}
       </SectionCard>
+      <div className="lg:col-span-3">
+        <CoverageAgentCard claim={detail.claim} onApplied={reload} />
+      </div>
     </div>
   )
 }

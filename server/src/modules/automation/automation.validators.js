@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { DOCUMENT_TYPES, EXTRACTABLE_CLAIM_FIELDS } from '../../../../shared/constants.js'
+import { CLAIM_AGENTS, DOCUMENT_TYPES, EXTRACTABLE_CLAIM_FIELDS } from '../../../../shared/constants.js'
 import { paginationSchema } from '../../utils/http.js'
 
 export const idParams = z.object({ id: z.string().uuid() })
@@ -24,3 +24,8 @@ export const listRemindersQuery = paginationSchema.extend({
   audience: z.enum(['INTERNAL', 'CUSTOMER']).optional(),
   type: z.enum(['DEADLINE_APPROACHING', 'DEADLINE_OVERDUE', 'MISSING_DOCUMENTS']).optional(),
 })
+
+// Claim agents. The body of an apply request is validated by each agent.
+export const agentParams = z.object({ id: z.string().uuid(), agent: z.enum(Object.keys(CLAIM_AGENTS)) })
+export const applyAgentSchema = z.record(z.string(), z.unknown())
+export const discardAgentSchema = z.object({ reason: z.string().trim().max(1000).optional() })

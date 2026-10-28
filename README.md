@@ -96,5 +96,6 @@ docs/              PRD, API, database and setup guides
 - [docs/WALKTHROUGH.md](docs/WALKTHROUGH.md) — end-to-end code walkthrough: structure, modules, database, AI, security, API flows, run and test
 - [docs/API.md](docs/API.md) — endpoints with request/response examples
 - [docs/DATABASE.md](docs/DATABASE.md) — tables, relationships, constraints, RLS
+- [docs/DEPLOY-VERCEL.md](docs/DEPLOY-VERCEL.md) — deploying to Vercel with Neon and a hosted Ollama
 - [docs/DATABASE-REFERENCE.md](docs/DATABASE-REFERENCE.md) — every table: columns, keys, joins, usage by module, sample queries, ERD and workflow
 - [docs/SETUP.md](docs/SETUP.md) — PostgreSQL setup, configuration, migrations, Supabase import, tests, demo accounts, UAT script

@@ -15,6 +15,7 @@ import { Input, Textarea } from '@/components/ui/input.js'
 import { Select } from '@/components/ui/select.js'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog.js'
 import { formatDateTime, formatMoney } from '@/utils/format.js'
+import { DenialLetterAgentCard } from '@/components/automation/AgentPanels.js'
 
 function EvaluationEditor({ evaluation, onSaved, onSubmitted }) {
   const action = useAction()
@@ -301,6 +302,7 @@ export function InvestigationTab({ detail, reload }) {
               confirmLabel="Return evaluation"
               onConfirm={async (comment) => Boolean(await action.run(async () => { await evaluationsService.returnForCorrection(returning.id, comment); await refresh() }, { success: 'Evaluation returned' }))}
             />
+            {(claim.coverage_result === 'NOT_COVERED' || rows.some((a) => a.decision === 'DENY' && a.status !== 'SUPERSEDED')) && <DenialLetterAgentCard claim={claim} onApplied={refresh} />}
           </div>
         )
       }}
