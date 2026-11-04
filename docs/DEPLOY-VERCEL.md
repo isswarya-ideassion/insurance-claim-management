@@ -69,11 +69,12 @@ Set these for **Production** (and Preview, if you use preview deployments). Neve
 | `FIELD_ENCRYPTION_KEY` | the **same** value as in your local `server/.env` (32 bytes, base64) |
 | `CLIENT_ORIGIN` | your site address, for example `https://harborpoint.vercel.app` |
 | `CRON_SECRET` | a random secret, at least 16 characters; Vercel Cron sends it automatically |
-| `AI_PROVIDER` | `ollama` |
-| `OLLAMA_BASE_URL` | the HTTPS address from step 2 |
-| `OLLAMA_API_KEY` | the key from step 2 |
-| `OLLAMA_MODEL` | the model from step 2 |
+| `AI_PROVIDER` | `beacon` — Beacon, our own rules. No model, no network call, nothing to pay for. See below if you want claim summaries too. |
 | `DEMO_PASSWORD` | only if you seeded with a password other than the default |
+
+**On `AI_PROVIDER`.** `beacon` is the right default for a deployment: Beacon runs inside the function, so there is no model to host, no key to buy and no request leaving Vercel. It answers the six claim agents and nothing else.
+
+The two agents it cannot answer — claim summarising and document field extraction — need a language model, because they read free text. If you want those in production, use `anthropic` with an `ANTHROPIC_API_KEY` (cheap per claim) rather than `ollama`: a serverless function cannot reach an Ollama running on someone's laptop, and `OLLAMA_BASE_URL=http://localhost:11434` resolves to the function's own container, not your machine. Hosting an Ollama reachable from Vercel means paying for a GPU VM, which costs more than the API.
 
 Generate a secret with:
 

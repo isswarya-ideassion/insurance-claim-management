@@ -75,7 +75,11 @@ export async function runAi(ctx, { agent, claimId, documentId = null, inputHash,
   let output
   let result
   try {
-    output = await ctx.ai.generateJson(request)
+    // The agent name travels with the request so a deterministic provider can
+    // dispatch on it. Model providers ignore the extra field: for an LLM one
+    // generic "fill this schema" call serves every agent, but rule-based logic
+    // has to know which question it is being asked.
+    output = await ctx.ai.generateJson({ ...request, agent })
     result = validate(output.data)
   } catch (err) {
     const error = err instanceof AppError ? err : aiError(502, 'AI_PROVIDER_ERROR', 'The AI request failed unexpectedly.', true)

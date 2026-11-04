@@ -894,7 +894,15 @@ export async function runAgent(ctx, claimId, agent) {
     agent,
     claimId: claim.id,
     inputHash: sha256(`${inputText}|${PROMPT_VERSIONS[agent]}`),
-    request: { system: spec.system, schema: spec.schema, effort: 'medium', content: [{ type: 'text', text: `${spec.instruction}\n\nClaim facts (JSON):\n${inputText}` }] },
+    request: {
+      system: spec.system,
+      schema: spec.schema,
+      effort: 'medium',
+      content: [{ type: 'text', text: `${spec.instruction}\n\nClaim facts (JSON):\n${inputText}` }],
+      // The same facts as structured data. A model reads the text; a
+      // rule-based provider reads this and never parses prose.
+      input: spec.input,
+    },
     validate: spec.validate,
   })
   const run = await ctx.db.tx(async (t) => {

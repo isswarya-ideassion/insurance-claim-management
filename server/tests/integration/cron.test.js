@@ -19,6 +19,15 @@ describe('scheduled jobs endpoint (Vercel Cron)', () => {
 
     const res = await request(ctx.app).get('/api/v1/internal/cron/jobs').set('authorization', `Bearer ${TEST_SETTINGS.CRON_SECRET}`)
     expect(res.status).toBe(200)
-    expect(res.body.data.jobs).toEqual({ overdueTasks: 'ok', deadlineReminders: 'ok', slaEscalation: 'ok', partitions: 'ok' })
+    // fraudRings and anomalyScoring report ok with no rings and no trained
+    // model: both are no-ops on an empty book rather than failures.
+    expect(res.body.data.jobs).toEqual({
+      overdueTasks: 'ok',
+      deadlineReminders: 'ok',
+      slaEscalation: 'ok',
+      fraudRings: 'ok',
+      anomalyScoring: 'ok',
+      partitions: 'ok',
+    })
   })
 })

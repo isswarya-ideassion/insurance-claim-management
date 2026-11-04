@@ -40,7 +40,10 @@ const schema = z.object({
 
   // AI automation. "none" disables AI features; the API then returns setup
   // instructions instead of results. Credentials stay server-side.
-  AI_PROVIDER: z.enum(['none', 'anthropic', 'ollama']).default('none'),
+  // "beacon" is our own rules engine: no model file, no network call, no cost.
+  // It is a provider name like the others, not an environment — Beacon runs
+  // the same way in development and in production.
+  AI_PROVIDER: z.enum(['none', 'anthropic', 'ollama', 'beacon']).default('none'),
   ANTHROPIC_API_KEY: z.string().optional(),
   AI_MODEL: z.string().trim().min(1).default('claude-opus-5-5'),
   AI_TIMEOUT_MS: z.coerce.number().int().min(5_000).max(600_000).default(90_000),
