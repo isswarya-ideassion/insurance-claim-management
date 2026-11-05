@@ -11,7 +11,7 @@ import { createBeaconProvider } from './intelligence/beacon.provider.js'
 
 export const AI_SETUP_INSTRUCTIONS = [
   'AI automation is not configured, so no AI results are produced.',
-  'Beacon (our own, no model or network needed): set AI_PROVIDER=local in server/.env and restart the API. Covers coverage, triage, reserve, denial, payee and subrogation.',
+  'Beacon (our own rules, no model or network needed): set AI_PROVIDER=beacon in server/.env — or in the hosting environment variables when deployed — and restart the API. Covers coverage, triage, reserve, denial, payee and subrogation.',
   'Local models: install Ollama, run "ollama pull llama3.1:8b", then set AI_PROVIDER=ollama in server/.env (optional: OLLAMA_BASE_URL, OLLAMA_MODEL, OLLAMA_VISION_MODEL) and restart the API.',
   'Claude API: set AI_PROVIDER=anthropic and ANTHROPIC_API_KEY=<your key> in server/.env (never in client/.env), then restart the API.',
   'Optional: AI_MODEL (Claude model, default claude-opus-5-5), AI_TIMEOUT_MS (default 90000), AI_MAX_RETRIES (default 2).',
