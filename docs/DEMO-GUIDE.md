@@ -76,22 +76,37 @@ To reach any agent: **Claims** → open the claim → the tab below → the agen
 
 This is the strongest five minutes, because it shows the human overruling the AI and the system reacting.
 
-**As `ops.olivia`, claim HPC-2026-000101, Policy & Coverage tab**
+> ### ⚠️ The one step everything else depends on
+>
+> The denial-letter card is **not rendered at all** until the claim carries `coverage_result = NOT_COVERED`, or an evaluation with decision `DENY`. It is hidden, not greyed out — so if you miss step 2, Maria's Evaluation tab looks empty and there is nothing on screen explaining why.
+>
+> Step 2 is **not** just clicking Apply. You must change a dropdown first.
 
-1. **Run** the coverage check. Beacon returns **NEEDS_REVIEW at confidence 0.3** and says no clause in the wording names this loss.
-   *Point to make:* it did not guess. Low confidence is the honest answer, and coverage can never auto-apply — the ceiling is 0.6, below the 0.8 bar.
+**As `ops.olivia` — claim HPC-2026-000101 → Policy & Coverage tab**
 
-2. **Change the result to `NOT_COVERED`**, add a note, **Apply**.
-   *Point to make:* the officer overrode the AI. The claim record now carries the officer's decision, and the audit log names her, not Beacon.
+1. **Run** the coverage check. Beacon returns **Needs Review, confidence 30%**, and says no clause in the wording names this loss type.
+   *Point to make:* it did not guess. Low confidence is the honest answer, and coverage can never auto-apply — Beacon's ceiling is 0.6, below the 0.8 bar at which anything could be accepted automatically.
 
-**Now sign in as `manager.maria`, same claim, Evaluation tab**
+2. Open the apply form. There is a dropdown labelled **"Coverage result to record"**, pre-filled with Beacon's own answer (*Needs Review*).
+   **Change it to `Not Covered`**, add a note, then click **Record coverage result**.
+   *Point to make:* the officer overruled the AI. The claim now carries her decision, and the audit entry names Olivia Martins — not Beacon.
 
-3. **Run** the denial letter. Before step 2 this was blocked with *"a denial letter can be drafted only when the evaluation recommends denial or coverage was recorded as not covered."* Now it produces a complete letter.
+   > Already applied it as *Needs Review*? No harm. Click **Run again** to create a fresh run, then apply that one with the dropdown set to **Not Covered**. A run can only be applied once, but you can run the agent as many times as you like while the claim is still in intake.
 
-4. Read what it flags: **0 clauses cited, 2 missing notices.** Beacon is telling the manager the letter is not ready to send because the health policy has no matching exclusion.
-   *Point to make:* this is the system refusing to produce something that looks finished but isn't.
+**Now sign in as `manager.maria` — same claim → Evaluation tab**
+
+3. The **Denial letter** card is now on the page. Before step 2 it was not. **Run** it.
+
+4. Read what it flags: **0 clauses cited, 2 missing notices.** Beacon is telling the manager the letter is not ready to send, because this health policy contains no exclusion matching the loss.
+   *Point to make:* the system refuses to hand over something that looks finished but isn't.
 
 5. Edit the letter, **Approve**. It is stored as a PDF on the claim with the manager named as approver.
+
+### Do not use the "Deny (not covered)" button for this
+
+Maria's claim header has a red **Deny (not covered)** button. It looks like the obvious way to mark a claim not covered — it is not, for this purpose. It is a workflow transition (`Coverage Verification → Rejected`) and it **does not set `coverage_result`**. Use it and the claim is rejected, the denial-letter card is *still* hidden, and you have closed the claim out of intake so Olivia can no longer record coverage either.
+
+Only the coverage-check apply form in step 2 sets `coverage_result`.
 
 ---
 
@@ -156,6 +171,8 @@ The ring demo prints a **70/100 HIGH** ring. Worth showing: the same two compani
 | "Already reviewed" | That run was applied or discarded | Run the agent again — it creates a new run |
 | Coverage check won't run | Claim is past intake | Only SUBMITTED, POLICY_VERIFICATION or REOPENED |
 | Reserve won't run | Not the assigned adjuster, or not in Investigation | Sign in as `adjuster.adam` on HPC-2026-000106 |
+| **Evaluation tab is empty, no Denial letter card** | `coverage_result` is not `NOT_COVERED` | The card is hidden, not disabled. Do step 2 of section 4 — change the dropdown to *Not Covered* |
+| Evaluation tab says "Evaluation not started yet" | Normal before Investigation | Expected. The denial card appears below it once coverage is `NOT_COVERED`; it does not need an evaluation |
 
 ### Reset the demo data
 
