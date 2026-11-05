@@ -63,7 +63,7 @@ Other server variables:
 | `AUTH_RATE_LIMIT` | Optional login/registration attempts per IP per 15 minutes |
 | `AI_PROVIDER` | `none` (default — AI features show setup instructions), `ollama` (local models) or `anthropic` (Claude API) |
 | `OLLAMA_API_KEY` | Bearer key for a hosted Ollama (ollama.com) or one behind an authenticating proxy. Empty for a local Ollama |
-| `CRON_SECRET` | Enables `GET /api/v1/internal/cron/jobs` for an external scheduler such as Vercel Cron (see [DEPLOY-VERCEL.md](DEPLOY-VERCEL.md)) |
+| `CRON_SECRET` | Enables `GET /api/internal/cron/jobs` for an external scheduler such as Vercel Cron (see [DEPLOY-VERCEL.md](DEPLOY-VERCEL.md)) |
 | `MAX_UPLOAD_MB` | Largest upload, 1–10 MB (default 10; 4 on Vercel) |
 | `OLLAMA_BASE_URL` / `OLLAMA_MODEL` / `OLLAMA_VISION_MODEL` | With `AI_PROVIDER=ollama`: server address (default `http://localhost:11434`), text model (default `llama3.1:8b`) and the model used for image documents (default `llama3.2-vision`). Ollama cannot read PDFs; extraction of PDF documents needs `anthropic` or manual review |
 | `ANTHROPIC_API_KEY` | **Server only.** Needed when `AI_PROVIDER=anthropic` |
@@ -72,7 +72,7 @@ Other server variables:
 | `REMINDER_LEAD_HOURS` | Claims due within this window get an "approaching deadline" reminder (default 24) |
 | `CUSTOMER_RECORD_RETENTION_YEARS` | Retention period shown on customer records (default 7) |
 
-The web app needs no configuration: `client/.env` only has `VITE_API_URL` (default `/api/v1`, proxied by Vite to port 4000).
+The web app needs no configuration: `client/.env` only has `VITE_API_URL` (default `/api`, proxied by Vite to port 4000).
 
 The server validates its configuration on start and refuses to run without `DATABASE_URL` and `AUTH_TOKEN_SECRET`, or without `FIELD_ENCRYPTION_KEY` outside demo and test databases.
 
@@ -82,7 +82,7 @@ The server validates its configuration on start and refuses to run without `DATA
 npm run db:migrate      # apply database/migrations in order (also done automatically at API start)
 npm run db:status       # list applied and pending migrations
 npm run db:seed-demo    # optional, development only: demo users, policies and claims
-npm run dev             # API on http://localhost:4000/api/v1, web app on http://localhost:5173
+npm run dev             # API on http://localhost:4000/api, web app on http://localhost:5173
 ```
 
 Migrations are plain SQL files in `database/migrations/`, applied in filename order inside a transaction each and recorded in `app_meta.schema_migrations`; an advisory lock lets several API instances start together. `database/seed.sql` (reference roles) is re-applied after them and is idempotent. If you change `shared/workflow.js`, regenerate the transition migration with `npm run db:transitions-sql` and ship it as a new migration.

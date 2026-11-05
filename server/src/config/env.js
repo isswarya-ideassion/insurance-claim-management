@@ -57,7 +57,7 @@ const schema = z.object({
   OLLAMA_API_KEY: z.string().optional(),
 
   // Scheduled jobs called by a scheduler (Vercel Cron) instead of the in-process timer.
-  // GET /api/v1/internal/cron/jobs with "Authorization: Bearer <CRON_SECRET>"; unset disables the endpoint.
+  // GET /api/internal/cron/jobs with "Authorization: Bearer <CRON_SECRET>"; unset disables the endpoint.
   CRON_SECRET: z.string().min(16).optional(),
   // Largest upload in MB (at most 10). Vercel functions accept requests up to 4.5 MB, so use 4 there.
   MAX_UPLOAD_MB: z.coerce.number().min(1).max(10).default(10),

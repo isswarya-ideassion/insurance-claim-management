@@ -1,6 +1,6 @@
-# API Reference — `/api/v1`
+# API Reference — `/api`
 
-Base URL in development: `http://localhost:4000/api/v1` (the web app proxies `/api` to it).
+Base URL in development: `http://localhost:4000/api` (the web app proxies `/api` to it).
 
 ## Conventions
 
@@ -44,7 +44,7 @@ Every response carries an `x-request-id` header, also stored on audit records.
 
 
 ```http
-POST /api/v1/auth/login
+POST /api/auth/login
 { "email": "ops.olivia@demo.harborpoint.test", "password": "HarborDemo!2026" }
 
 200 { "data": { "accessToken": "eyJ…", "expiresIn": 28800, "tokenType": "bearer" } }
@@ -84,7 +84,7 @@ POST /api/v1/auth/login
 | GET | `/claims/:id/timeline` | Merged activity (customer-safe for claimants) |
 
 ```http
-POST /api/v1/claims
+POST /api/claims
 { "policyNumber": "HP-MOT-100231", "lossDate": "2026-10-15T10:30:00Z", "lossLocation": "14 MG Road, opposite City Mall",
   "lossCity": "Kochi", "lossCountry": "India",
   "lossType": "COLLISION", "lossDescription": "Another car merged into my lane…",
@@ -103,7 +103,7 @@ Field rules for drafts and submission:
 - Amounts are Indian rupees (`INR`); messages and notes format them as `₹7,800.00`.
 
 ```http
-POST /api/v1/claims/{id}/submit
+POST /api/claims/{id}/submit
 Idempotency-Key: 9b2f3c4e-…
 
 201 { "data": { "claim_number": "HPC-2026-001003", "status": "SUBMITTED", … }, "meta": { "replayed": false } }
@@ -111,7 +111,7 @@ Idempotency-Key: 9b2f3c4e-…
 ```
 
 ```http
-POST /api/v1/claims/{id}/transitions
+POST /api/claims/{id}/transitions
 { "toStatus": "PAID" }
 
 422 { "error": { "code": "INVALID_TRANSITION",
@@ -146,7 +146,7 @@ POST /api/v1/claims/{id}/transitions
 | POST | `/artifact-requests/:id/close` | Staff. Cancels an open ad-hoc request or closes a received one; required artifacts close through review or a document exception |
 
 ```http
-POST /api/v1/documents/{id}/review
+POST /api/documents/{id}/review
 { "decision": "REJECT", "rejectionReason": "Invoice is not itemised" }
 
 200 { "data": { "document": { "status": "REJECTED", … }, "claimStatus": "DOCUMENTS_REQUIRED" } }
@@ -182,7 +182,7 @@ Unclaimed queue tasks escalate to Claims Managers after `unclaimed_task_escalati
 | GET | `/claims/:id/approvals` · `/approvals?type&decision&mine` | Immutable decision history (`type`: `RESERVE`, `EVALUATION`, `CLOSURE`, `SETTLEMENT`) |
 
 ```http
-POST /api/v1/reserves/{id}/review          (Claims Manager with $50,000 reserve authority)
+POST /api/reserves/{id}/review          (Claims Manager with $50,000 reserve authority)
 { "decision": "APPROVED" }
 
 403 { "error": { "code": "APPROVAL_LIMIT_EXCEEDED", "message": "$120,000.00 exceeds your reserve authority of $50,000.00. Refer this reserve to a manager with higher authority." } }
@@ -229,7 +229,7 @@ Settlement approval routing: the first step requires `ADJUSTER` (the claim's ass
 | GET | `/payments/mine` · `/claims/:id/payment-status` | Client-safe settlement and payment status |
 
 ```http
-POST /api/v1/payments/{id}/issue
+POST /api/payments/{id}/issue
 Idempotency-Key: pay-3f8a1c…
 
 200 { "data": { "replayed": false, "payment": { "status": "PAID", "portal_reference": "SIM-TXN-7010B0F7F85D", "is_simulated": true, … },

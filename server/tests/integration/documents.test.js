@@ -30,7 +30,7 @@ describe('document upload validation', () => {
     await expect(ctx.db.query('delete from public.document_files where storage_key = $1', [doc.storage_key])).rejects.toMatchObject({ code: 'IMMUTABLE_RECORD' })
     const token = await ctx.login('customer.ben')
     const download = await request(ctx.app)
-      .get(`/api/v1/documents/${doc.id}/download`)
+      .get(`/api/documents/${doc.id}/download`)
       .set('authorization', `Bearer ${token}`)
       .buffer(true)
       .parse((resp, cb) => {
@@ -80,7 +80,7 @@ describe('secure download', () => {
     expect(ok.headers['cache-control']).toBe('private, no-store')
     expect(ok.headers['content-disposition']).toMatch(/^inline/)
     expect((await ctx.as('customer.alice').get(`/documents/${doc.id}/download`)).status).toBe(404)
-    expect((await request(ctx.app).get(`/api/v1/documents/${doc.id}/download`)).status).toBe(401)
+    expect((await request(ctx.app).get(`/api/documents/${doc.id}/download`)).status).toBe(401)
     const audit = await ctx.db.count('audit_logs', { entity_id: doc.id, action: 'DOCUMENT_DOWNLOADED' })
     expect(audit).toBe(1)
   })

@@ -5,9 +5,9 @@ The whole application runs in one Vercel project:
 | Part | Where it runs |
 |---|---|
 | React client | Vercel static hosting (`client/dist`) |
-| Express API | One Vercel Function, `api/index.js`; all of `/api/v1/*` is rewritten to it (`vercel.json`) |
+| Express API | One Vercel Function, `api/index.js`; all of `/api/*` is rewritten to it (`vercel.json`) |
 | PostgreSQL | Neon, connected through the Vercel Marketplace |
-| Scheduled jobs | Vercel Cron calls `GET /api/v1/internal/cron/jobs` |
+| Scheduled jobs | Vercel Cron calls `GET /api/internal/cron/jobs` |
 | AI agents | An Ollama server reachable over HTTPS (Ollama cannot run inside Vercel) |
 
 Your laptop's database and Ollama are not reachable from Vercel; this guide moves both.
@@ -92,7 +92,7 @@ Leave `SEED_DEMO_DATA` unset: production refuses it, and the demo data was loade
 
 ## 6. Check the deployment
 
-1. Open `https://<your-site>/api/v1/health`: expect `"status":"ok"` and `"aiConfigured":true`.
+1. Open `https://<your-site>/api/health`: expect `"status":"ok"` and `"aiConfigured":true`.
 2. Sign in as `ops.olivia@demo.harborpoint.test` (password `HarborDemo!2026` unless changed).
 3. Open `HPC-2026-000102` → *Policy & Coverage* → *Coverage check* → *Run*. The result line shows the Ollama model name.
 4. Vercel → Project → **Logs** shows each request and `"msg":"ai run"` lines for agent runs.
@@ -105,7 +105,7 @@ Leave `SEED_DEMO_DATA` unset: production refuses it, and the demo data was loade
 - use any external scheduler (GitHub Actions, cron-job.org) to call every 15 minutes:
 
 ```
-GET https://<your-site>/api/v1/internal/cron/jobs
+GET https://<your-site>/api/internal/cron/jobs
 Authorization: Bearer <CRON_SECRET>
 ```
 

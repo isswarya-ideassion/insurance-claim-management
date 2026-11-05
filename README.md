@@ -3,7 +3,7 @@
 A full-stack insurance claims management application for the fictional **HarborPoint General Insurance**. It implements the Enterprise Claims Operations Hub PRD: the complete claim lifecycle — FNOL, coverage verification, triage and assignment, document intake, evaluation, reserves with an authority decision node, compliance review, settlement approval, payment issuance, closure and recovery — with role-based workspaces for eight roles (the PRD's seven plus a Claims Operations Manager who owns every new claim), SLA clocks, segment configuration with four-eyes approval, field-level encryption, a hash-chained audit trail, centralized customer records and Claude-assisted automation.
 
 - **Frontend:** React 19 + Vite 8 (JavaScript `.js` files only), Tailwind CSS 4, shadcn/ui-style components on Radix UI, Lucide icons, React Router 7, React Hook Form + Zod, Recharts, Framer Motion
-- **Backend:** Node.js + Express 5 REST API (`/api/v1`), Zod validation, centralized error handling and request logging
+- **Backend:** Node.js + Express 5 REST API (`/api`), Zod validation, centralized error handling and request logging
 - **Data:** PostgreSQL only — schema with migrations, constraints, triggers and row-level security; the API's own email + password sign-in (`auth.users`, scrypt hashes, signed session tokens); claim documents stored in the database (`document_files`)
 - **Demo data:** optional fictional users, policies and claims (`SEED_DEMO_DATA=true`) with one-click logins and a simulated payment adapter
 

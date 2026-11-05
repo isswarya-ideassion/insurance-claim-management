@@ -670,7 +670,7 @@ Not built in this schema: `data_subject_requests` and a general `governance_chan
 
 ### 6.1 Design principles
 
-- **REST for commands and integrations:** versioned under `/api/v1`, JSON, resource-oriented, idempotency keys on all POSTs that move money or state.
+- **REST for commands and integrations:** versioned under `/api`, JSON, resource-oriented, idempotency keys on all POSTs that move money or state.
 - **GraphQL for the Hub view:** one query returns claim, tasks, artifacts, reserves, reviews and payments, resolving from Postgres and, where needed, cached legacy sources; query depth and cost limits enforced.
 - **Auth:** OIDC/SSO (JWT access tokens) for staff, verified sessions for clients. RBAC and ABAC checks live in a policy layer (`shared/permissions.js`, `access.service.js`), not in route handlers.
 - **Async work:** SQS-backed queues and workers for OCR, Claude calls, notifications and sync jobs; webhooks and events carry a request ID for tracing.

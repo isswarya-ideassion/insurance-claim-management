@@ -43,7 +43,7 @@ export async function createTestContext() {
   async function login(who) {
     if (tokens[who]) return tokens[who]
     const email = who.includes('@') ? who : `${who}@${DEMO_DOMAIN}`
-    const res = await request(app).post('/api/v1/auth/login').send({ email, password: PASSWORD })
+    const res = await request(app).post('/api/auth/login').send({ email, password: PASSWORD })
     if (res.status !== 200) throw new Error(`login failed for ${who}: ${res.status} ${JSON.stringify(res.body)}`)
     tokens[who] = res.body.data.accessToken
     return tokens[who]
@@ -53,7 +53,7 @@ export async function createTestContext() {
   function as(who) {
     const build = async (method, url) => {
       const token = await login(who)
-      return { req: request(app)[method](`/api/v1${url}`).set('authorization', `Bearer ${token}`) }
+      return { req: request(app)[method](`/api${url}`).set('authorization', `Bearer ${token}`) }
     }
     return {
       get: async (url) => (await build('get', url)).req,

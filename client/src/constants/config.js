@@ -1,6 +1,6 @@
 const env = import.meta.env
 
-export const API_URL = env.VITE_API_URL || '/api/v1'
+export const API_URL = env.VITE_API_URL || '/api'
 
 // Must match the server's MAX_UPLOAD_MB (4 on Vercel, where requests are capped at 4.5 MB).
 export const MAX_UPLOAD_MB = Math.min(10, Number(env.VITE_MAX_UPLOAD_MB) || 10)

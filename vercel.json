@@ -11,10 +11,10 @@
     }
   },
   "rewrites": [
-    { "source": "/api/v1/:path*", "destination": "/api/index" },
+    { "source": "/api/:path*", "destination": "/api/index" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ],
   "crons": [
-    { "path": "/api/v1/internal/cron/jobs", "schedule": "0 3 * * *" }
+    { "path": "/api/internal/cron/jobs", "schedule": "0 3 * * *" }
   ]
 }

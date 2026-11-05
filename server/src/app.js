@@ -26,7 +26,7 @@ export function createApp(deps) {
   app.use(requestLogger)
   app.use(express.json({ limit: '1mb' }))
 
-  app.use('/api/v1', createApiRouter(deps.config))
+  app.use('/api', createApiRouter(deps.config))
 
   app.use(notFoundHandler)
   app.use(errorHandler)

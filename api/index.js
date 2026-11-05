@@ -1,11 +1,11 @@
 /**
- * Vercel Function entry for the Express API (all of /api/v1 is rewritten here,
+ * Vercel Function entry for the Express API (all of /api is rewritten here,
  * see vercel.json). One app, with its database pool, is created per function
  * instance on the first request and reused while the instance stays warm.
  *
  * Differences from the long-running server (server/src/server.js):
  * - migrations run as a deploy step (npm run db:migrate), never on a request;
- * - scheduled jobs run through GET /api/v1/internal/cron/jobs (Vercel Cron);
+ * - scheduled jobs run through GET /api/internal/cron/jobs (Vercel Cron);
  * - uploads are capped at 4 MB because Vercel accepts requests up to 4.5 MB;
  * - a small database pool, since many instances may run at once.
  */

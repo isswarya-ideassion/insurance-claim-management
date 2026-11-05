@@ -19,7 +19,7 @@ async function main() {
   if (config.isProduction) throw new Error('Run this check against a development database only')
   const deps = await createDependencies(config)
   const server = createApp(deps).listen(0)
-  const base = `http://127.0.0.1:${server.address().port}/api/v1`
+  const base = `http://127.0.0.1:${server.address().port}/api`
   try {
     console.log(`Provider: ${deps.ai.name} · model: ${deps.ai.model}`)
     const login = await fetch(`${base}/auth/login`, {

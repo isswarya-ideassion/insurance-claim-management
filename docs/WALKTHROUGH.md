@@ -38,7 +38,7 @@ flowchart LR
   DB[(PostgreSQL<br/>data · auth.users · document_files)]
   AI[Claude API]
 
-  UI -- "fetch /api/v1 + Bearer token" --> MW --> MOD --> SVC --> AD
+  UI -- "fetch /api + Bearer token" --> MW --> MOD --> SVC --> AD
   AD --> DB
   AD --> AI
   SH -.imported by.-> UI
@@ -437,7 +437,7 @@ AI_TIMEOUT_MS=90000
 AI_MAX_RETRIES=2
 ```
 
-`GET /api/v1/automation/status` reports `{ configured, provider, model, setup[] }`; the Automation tab shows setup instructions when AI is off.
+`GET /api/automation/status` reports `{ configured, provider, model, setup[] }`; the Automation tab shows setup instructions when AI is off.
 
 ---
 
@@ -535,7 +535,7 @@ Navigation per role and the roles allowed on each route are in [constants/naviga
 
 | Topic | How it works |
 |---|---|
-| Base URL | `VITE_API_URL` (default `/api/v1`), proxied by Vite to port 4000 in development |
+| Base URL | `VITE_API_URL` (default `/api`), proxied by Vite to port 4000 in development |
 | Calls | Pages call a service (`claimsService.submit(id, body)`), which calls `api.get/post/patch/delete/upload/blob` in [apiClient.js](../client/src/services/apiClient.js) |
 | Auth header | `apiClient` asks `authService.getAccessToken()` before every request and sets `Authorization: Bearer …` |
 | Envelope | Success `{ data, meta }`; error `{ error: { code, message, details, requestId } }`. `apiClient` throws an `ApiError` with `status`, `code`, `details`, `requestId` |

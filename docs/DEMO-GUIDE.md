@@ -17,7 +17,7 @@ Wait for both lines:
 
 ```
 [client]  ➜  Local:   http://localhost:5173/
-[server]  HarborPoint Claims API listening on http://localhost:4000/api/v1
+[server]  HarborPoint Claims API listening on http://localhost:4000/api
 ```
 
 Open **http://localhost:5173**.
@@ -32,7 +32,7 @@ Get-NetTCPConnection -LocalPort 4000,5173 -State Listen | ForEach-Object { Stop-
 
 ```powershell
 # expect: provider = beacon
-curl.exe http://localhost:4000/api/v1/health
+curl.exe http://localhost:4000/api/health
 ```
 
 `"aiConfigured": true` means Beacon is live. If it says `false`, check `AI_PROVIDER=beacon` in `server/.env` and restart.
@@ -173,7 +173,7 @@ npm run db:seed-demo
 Get-NetTCPConnection -LocalPort 4000,5173 -State Listen | Select-Object LocalPort
 
 # 2. AI is Beacon
-curl.exe http://localhost:4000/api/v1/health
+curl.exe http://localhost:4000/api/health
 ```
 
 Then sign in as `ops.olivia`, open **HPC-2026-000105**, Overview tab, and run Triage. If an adjuster name comes back, everything works.

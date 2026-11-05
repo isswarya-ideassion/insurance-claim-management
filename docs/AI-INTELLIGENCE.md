@@ -53,7 +53,7 @@ AI_PROVIDER: z.enum(['none', 'anthropic', 'ollama', 'local'])
 
 - Scoring is arithmetic over a few hundred rows — microseconds, no new process.
 - Model "weights" live in a Postgres table, not a binary file.
-- Retraining is a nightly job on the Vercel Cron already wired at `vercel.json` → `/api/v1/internal/cron/jobs`.
+- Retraining is a nightly job on the Vercel Cron already wired at `vercel.json` → `/api/internal/cron/jobs`.
 - Runs inside the current function. No new infrastructure, no cost.
 
 ## 5. What this does not do

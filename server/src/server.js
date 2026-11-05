@@ -12,7 +12,7 @@ async function main() {
   await ensurePartitions(deps)
 
   const server = app.listen(config.PORT, () => {
-    logger.info(`HarborPoint Claims API listening on http://localhost:${config.PORT}/api/v1`, {
+    logger.info(`HarborPoint Claims API listening on http://localhost:${config.PORT}/api`, {
       env: config.NODE_ENV,
       demoData: config.demoData,
     })

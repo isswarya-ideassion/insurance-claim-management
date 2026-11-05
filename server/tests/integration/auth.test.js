@@ -10,7 +10,7 @@ afterAll(() => ctx.close())
 
 describe('authentication', () => {
   it('reports the database and demo data on the health endpoint', async () => {
-    const res = await request(ctx.app).get('/api/v1/health')
+    const res = await request(ctx.app).get('/api/health')
     expect(res.status).toBe(200)
     expect(res.body.data).toMatchObject({ database: 'postgres', demoData: true, simulatedPayments: true })
   })
@@ -18,35 +18,35 @@ describe('authentication', () => {
   it('accepts bcrypt hashes imported from Supabase and upgrades them to scrypt', async () => {
     const bcrypt = (await import('bcryptjs')).default
     const email = 'imported.client@example.test'
-    const reg = await request(ctx.app).post('/api/v1/auth/register').send({ email, password: 'Str0ng-Password!', fullName: 'Imported Client', acceptPrivacyNotice: true })
+    const reg = await request(ctx.app).post('/api/auth/register').send({ email, password: 'Str0ng-Password!', fullName: 'Imported Client', acceptPrivacyNotice: true })
     expect(reg.status).toBe(201)
     // Supabase Auth stores bcrypt hashes; the import copies them unchanged.
     await ctx.db.query('update auth.users set encrypted_password = $2 where lower(email) = $1', [email, bcrypt.hashSync('Imported-Pass-123', 10)])
-    const wrong = await request(ctx.app).post('/api/v1/auth/login').send({ email, password: 'Wrong-Pass-123' })
+    const wrong = await request(ctx.app).post('/api/auth/login').send({ email, password: 'Wrong-Pass-123' })
     expect(wrong.status).toBe(401)
-    const ok = await request(ctx.app).post('/api/v1/auth/login').send({ email, password: 'Imported-Pass-123' })
+    const ok = await request(ctx.app).post('/api/auth/login').send({ email, password: 'Imported-Pass-123' })
     expect(ok.status).toBe(200)
     const [row] = await ctx.db.query('select encrypted_password from auth.users where lower(email) = $1', [email])
     expect(row.encrypted_password.startsWith('scrypt$')).toBe(true)
-    const again = await request(ctx.app).post('/api/v1/auth/login').send({ email, password: 'Imported-Pass-123' })
+    const again = await request(ctx.app).post('/api/auth/login').send({ email, password: 'Imported-Pass-123' })
     expect(again.status).toBe(200)
   })
 
   it('rejects requests without a token', async () => {
-    const res = await request(ctx.app).get('/api/v1/claims')
+    const res = await request(ctx.app).get('/api/claims')
     expect(res.status).toBe(401)
     expect(res.body.error.code).toBe('UNAUTHENTICATED')
     expect(res.body.error.requestId).toBeTruthy()
   })
 
   it('rejects forged tokens', async () => {
-    const res = await request(ctx.app).get('/api/v1/auth/me').set('authorization', 'Bearer not-a-real-token')
+    const res = await request(ctx.app).get('/api/auth/me').set('authorization', 'Bearer not-a-real-token')
     expect(res.status).toBe(401)
   })
 
   it('rejects wrong passwords without revealing whether the account exists', async () => {
-    const wrong = await request(ctx.app).post('/api/v1/auth/login').send({ email: 'ops.olivia@demo.harborpoint.test', password: 'nope-nope' })
-    const missing = await request(ctx.app).post('/api/v1/auth/login').send({ email: 'nobody@demo.harborpoint.test', password: 'nope-nope' })
+    const wrong = await request(ctx.app).post('/api/auth/login').send({ email: 'ops.olivia@demo.harborpoint.test', password: 'nope-nope' })
+    const missing = await request(ctx.app).post('/api/auth/login').send({ email: 'nobody@demo.harborpoint.test', password: 'nope-nope' })
     expect(wrong.status).toBe(401)
     expect(missing.status).toBe(401)
     expect(wrong.body.error.message).toBe(missing.body.error.message)
@@ -65,7 +65,7 @@ describe('authentication', () => {
   })
 
   it('registers clients with only the CLIENT role and records the privacy notice consent', async () => {
-    const reg = await request(ctx.app).post('/api/v1/auth/register').send({
+    const reg = await request(ctx.app).post('/api/auth/register').send({
       email: 'new.client@example.test',
       password: 'Str0ng-Password!',
       fullName: 'New Client',
@@ -73,18 +73,18 @@ describe('authentication', () => {
       acceptPrivacyNotice: true,
     })
     expect(reg.status).toBe(201)
-    const login = await request(ctx.app).post('/api/v1/auth/login').send({ email: 'new.client@example.test', password: 'Str0ng-Password!' })
+    const login = await request(ctx.app).post('/api/auth/login').send({ email: 'new.client@example.test', password: 'Str0ng-Password!' })
     const token = login.body.data.accessToken
-    const profile = await request(ctx.app).get('/api/v1/auth/me').set('authorization', `Bearer ${token}`)
+    const profile = await request(ctx.app).get('/api/auth/me').set('authorization', `Bearer ${token}`)
     expect(profile.body.data.roles).toEqual(['CLIENT'])
-    const consents = await request(ctx.app).get('/api/v1/auth/me/consents').set('authorization', `Bearer ${token}`)
+    const consents = await request(ctx.app).get('/api/auth/me/consents').set('authorization', `Bearer ${token}`)
     expect(consents.body.data.map((c) => c.consent_type)).toContain('PRIVACY_NOTICE')
   })
 
   it('refuses registration without accepting the privacy notice, and weak passwords', async () => {
-    const noConsent = await request(ctx.app).post('/api/v1/auth/register').send({ email: 'nc@example.test', password: 'Str0ng-Password!', fullName: 'No Consent' })
+    const noConsent = await request(ctx.app).post('/api/auth/register').send({ email: 'nc@example.test', password: 'Str0ng-Password!', fullName: 'No Consent' })
     expect(noConsent.status).toBe(422)
-    const weak = await request(ctx.app).post('/api/v1/auth/register').send({ email: 'weak@example.test', password: 'short', fullName: 'Weak Pw', acceptPrivacyNotice: true })
+    const weak = await request(ctx.app).post('/api/auth/register').send({ email: 'weak@example.test', password: 'short', fullName: 'Weak Pw', acceptPrivacyNotice: true })
     expect(weak.status).toBe(422)
   })
 
@@ -132,16 +132,16 @@ describe('authentication', () => {
   })
 
   it('supports password recovery without claiming email delivery', async () => {
-    const res = await request(ctx.app).post('/api/v1/auth/forgot-password').send({ email: 'customer.chen@demo.harborpoint.test' })
+    const res = await request(ctx.app).post('/api/auth/forgot-password').send({ email: 'customer.chen@demo.harborpoint.test' })
     expect(res.status).toBe(200)
     expect(res.body.data.delivery).toBe('LOGGED_DEV')
     const mail = ctx.sentEmails.find((m) => m.to === 'customer.chen@demo.harborpoint.test')
     const token = /token=([^\s]+)/.exec(mail.text)[1]
-    const reset = await request(ctx.app).post('/api/v1/auth/reset-password').send({ token, password: 'New-Password-456' })
+    const reset = await request(ctx.app).post('/api/auth/reset-password').send({ token, password: 'New-Password-456' })
     expect(reset.status).toBe(200)
-    const reuse = await request(ctx.app).post('/api/v1/auth/reset-password').send({ token, password: 'Another-Pass-789' })
+    const reuse = await request(ctx.app).post('/api/auth/reset-password').send({ token, password: 'Another-Pass-789' })
     expect(reuse.status).toBe(400)
-    const oldLogin = await request(ctx.app).post('/api/v1/auth/login').send({ email: 'customer.chen@demo.harborpoint.test', password: PASSWORD })
+    const oldLogin = await request(ctx.app).post('/api/auth/login').send({ email: 'customer.chen@demo.harborpoint.test', password: PASSWORD })
     expect(oldLogin.status).toBe(401)
   })
 })
