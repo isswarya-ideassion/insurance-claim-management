@@ -1,4 +1,4 @@
-import { ROLES, OPEN_TASK_STATUSES } from '../../../../shared/constants.js'
+import { ROLES, OPEN_TASK_STATUSES, INTAKE_CHECKLIST } from '../../../../shared/constants.js'
 import { hasAnyRole } from '../../../../shared/permissions.js'
 import { businessRule, forbidden, notFound, validationError } from '../../utils/errors.js'
 import { pageMeta, toOffset } from '../../utils/http.js'
@@ -11,13 +11,63 @@ import { logger } from '../../config/logger.js'
 
 const TEAM_ROLES = [ROLES.CLAIMS_OPS_MANAGER, ROLES.OPS_MANAGER, ROLES.COMPLIANCE_SECURITY]
 
+/**
+ * Progress of each Intake review, worked out from what people have already recorded on the claim —
+ * nobody ticks these by hand. Each step names the person who did it, taken from the record itself:
+ * the coverage result's reviewer, the intake checklist entries, the payee verifier, and whoever
+ * moved the claim out of intake (which also closes the task, see workflow.service.js).
+ */
+async function intakeProgress(db, tasks, claimMap) {
+  const intake = tasks.filter((t) => t.type === 'INTAKE_REVIEW' && t.claim_id && claimMap[t.claim_id])
+  if (!intake.length) return {}
+  const claimIds = [...new Set(intake.map((t) => t.claim_id))]
+  const claims = claimMap
+  const policyIds = [...new Set(claimIds.map((id) => claims[id].policy_id).filter(Boolean))]
+  const [coverage, policies] = await Promise.all([
+    db.findMany('coverage_results', { where: { claim_id: { in: claimIds } }, orderBy: [['created_at', 'desc']], columns: ['claim_id', 'result', 'reviewed_by', 'created_at'] }),
+    policyIds.length ? db.findMany('policies', { where: { id: { in: policyIds } }, columns: ['id', 'payee_id'] }) : [],
+  ])
+  const payeeIds = [...new Set(policies.map((p) => p.payee_id).filter(Boolean))]
+  const payees = payeeIds.length
+    ? await db.findMany('payees', { where: { id: { in: payeeIds } }, columns: ['id', 'verification_status', 'verified_by', 'verified_at'] })
+    : []
+  const latestCoverage = {}
+  for (const row of coverage) latestCoverage[row.claim_id] ??= row // rows are newest first
+  const payeeByPolicy = Object.fromEntries(policies.map((p) => [p.id, payees.find((x) => x.id === p.payee_id) || null]))
+  const names = await profileMap(db, [...coverage.map((c) => c.reviewed_by), ...payees.map((p) => p.verified_by), ...intake.map((t) => t.completed_by)])
+
+  const out = {}
+  for (const task of intake) {
+    const claim = claims[task.claim_id]
+    const cov = latestCoverage[claim.id]
+    const items = INTAKE_CHECKLIST.map((i) => claim.intake_checklist?.[i.key]).filter((v) => v?.checked)
+    const checklistDone = items.length === INTAKE_CHECKLIST.length
+    const lastTick = items.sort((a, b) => String(b.at).localeCompare(String(a.at)))[0]
+    const payee = payeeByPolicy[claim.policy_id]
+    const payeeDone = payee?.verification_status === 'VERIFIED'
+    const routed = !INTAKE_STATUSES.includes(claim.status) || task.status === 'DONE'
+    out[task.id] = [
+      { key: 'coverage', label: 'Coverage verified', done: Boolean(cov), by_name: cov ? nameOf(names, cov.reviewed_by) : null, at: cov?.created_at || null },
+      { key: 'checklist', label: `Intake checklist (${items.length}/${INTAKE_CHECKLIST.length})`, done: checklistDone, by_name: checklistDone ? lastTick?.by_name || null : null, at: checklistDone ? lastTick?.at || null : null },
+      { key: 'payee', label: payee ? 'Payee details verified' : 'Payee details (none on the policy yet)', done: payeeDone, by_name: payeeDone ? nameOf(names, payee.verified_by) : null, at: payeeDone ? payee.verified_at : null },
+      { key: 'routed', label: 'Claim routed', done: routed, by_name: routed ? nameOf(names, task.completed_by) : null, at: routed ? task.completed_at : null },
+    ]
+  }
+  return out
+}
+
+const INTAKE_STATUSES = ['SUBMITTED', 'POLICY_VERIFICATION', 'REOPENED']
+
 async function decorate(db, tasks) {
   const claimIds = [...new Set(tasks.map((t) => t.claim_id).filter(Boolean))]
   const claims = claimIds.length
-    ? await db.findMany('claims', { where: { id: { in: claimIds } }, columns: ['id', 'claim_number', 'status'] })
+    ? await db.findMany('claims', { where: { id: { in: claimIds } }, columns: ['id', 'claim_number', 'status', 'policy_id', 'intake_checklist'] })
     : []
   const claimMap = Object.fromEntries(claims.map((c) => [c.id, c]))
-  const names = await profileMap(db, tasks.flatMap((t) => [t.owner_user_id, t.created_by, t.completed_by]))
+  const [names, progress] = await Promise.all([
+    profileMap(db, tasks.flatMap((t) => [t.owner_user_id, t.created_by, t.completed_by])),
+    intakeProgress(db, tasks, claimMap),
+  ])
   const now = Date.now()
   return tasks.map((t) => ({
     ...t,
@@ -27,6 +77,8 @@ async function decorate(db, tasks) {
     created_by_name: nameOf(names, t.created_by),
     completed_by_name: nameOf(names, t.completed_by),
     is_overdue: Boolean(t.due_at && OPEN_TASK_STATUSES.includes(t.status) && new Date(t.due_at).getTime() < now),
+    // Only Intake review tasks have this; it closes itself when the claim is routed.
+    ...(progress[t.id] ? { progress: progress[t.id], system_managed: true } : {}),
   }))
 }
 

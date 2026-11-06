@@ -139,7 +139,7 @@ export const GUARD_DESCRIPTIONS = {
   coverageConfirmed: 'Coverage verification must be recorded as covered.',
   intakeChecklistComplete: 'Every intake checklist item must be completed.',
   payeeVerified: 'The payee and bank details for this claim must be collected and verified.',
-  hasDocumentsAwaitingReview: 'At least one uploaded document must be awaiting review.',
+  hasDocumentsAwaitingReview: 'At least one uploaded document must be awaiting review, or every required document must already be accepted.',
   requiredDocumentsAccepted: 'All required documents must be accepted, or a document exception must be recorded by a manager.',
   adjusterAssigned: 'An adjuster must be assigned to the claim.',
   evaluationSubmitted: 'A loss evaluation must be submitted.',

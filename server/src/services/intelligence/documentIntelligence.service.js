@@ -29,35 +29,35 @@ export const OCR_MIN_CONFIDENCE = 0.4
 
 const EXTRACTABLE_KEYS = new Set(EXTRACTABLE_CLAIM_FIELDS.map((f) => f.key))
 
-/** Reads a stored document and returns its text layer. */
-export async function documentText(db, documentId) {
-  const [row] = await db.query(
-    `select d.id, d.doc_type, d.mime_type, d.file_name, f.content
-       from public.documents d
-       join public.document_files f on f.storage_key = d.storage_key
-      where d.id = $1`,
-    [documentId],
-  )
-  if (!row) return null
+/** What to tell a person when a file cannot be read automatically, by `reason`. */
+export function unreadableMessage(reason, quality) {
+  const MESSAGES = {
+    IMAGE_UNREADABLE: `This photograph cannot be read: ${(quality?.issues ?? []).join(', ').toLowerCase() || 'quality too poor'}. Ask for a clearer picture.`,
+    OCR_LOW_CONFIDENCE: 'The text in this image does not match any trained typeface closely enough to read. Review it by eye.',
+    IMAGE_DECODE_FAILED: 'This image could not be decoded. Ask for it as a PNG or JPEG.',
+    SCANNED_NEEDS_OCR: 'This PDF is a scan with no text layer. Review it by eye.',
+  }
+  return MESSAGES[reason] ?? 'This document could not be read automatically. Review it by eye.'
+}
 
-  if (row.mime_type !== 'application/pdf') {
+/**
+ * Reads the text out of a file's bytes: the text layer of a PDF, or our own
+ * OCR for an image. Synchronous and dependency-free, so it serves both the
+ * reviewer screen and the Beacon extraction rule.
+ */
+export function readFileText(buffer, mimeType) {
+  if (mimeType !== 'application/pdf') {
     // Images go through our own vision pipeline: decode, assess readability,
     // straighten, then recognise. A photograph too blurry or too dark to read
     // is reported as such rather than run through OCR to produce confident
     // nonsense.
     try {
-      const image = decodeImage(Buffer.from(row.content))
+      const image = decodeImage(buffer)
       const quality = assessQuality(image.gray, image.width, image.height)
-      if (!quality.readable) {
-        return {
-          id: row.id, docType: row.doc_type, fileName: row.file_name,
-          text: '', hasTextLayer: false, reason: 'IMAGE_UNREADABLE', quality,
-        }
-      }
+      if (!quality.readable) return { text: '', hasTextLayer: false, reason: 'IMAGE_UNREADABLE', quality }
       const prepared = prepareDocument(image.gray, image.width, image.height)
       const ocr = recognize(prepared.binary, prepared.width, prepared.height)
       return {
-        id: row.id, docType: row.doc_type, fileName: row.file_name,
         text: maskAadhaar(ocr.text),
         // Below this, the glyphs do not resemble the trained templates closely
         // enough to treat the output as text — most often an unfamiliar
@@ -69,24 +69,32 @@ export async function documentText(db, documentId) {
         reason: ocr.meanConfidence < OCR_MIN_CONFIDENCE ? 'OCR_LOW_CONFIDENCE' : null,
       }
     } catch (err) {
-      return {
-        id: row.id, docType: row.doc_type, fileName: row.file_name,
-        text: '', hasTextLayer: false, reason: 'IMAGE_DECODE_FAILED', error: err.message,
-      }
+      return { text: '', hasTextLayer: false, reason: 'IMAGE_DECODE_FAILED', error: err.message }
     }
   }
-  const { text, hasTextLayer, pages } = extractPdfText(Buffer.from(row.content))
+  const { text, hasTextLayer, pages } = extractPdfText(buffer)
   return {
-    id: row.id,
-    docType: row.doc_type,
-    fileName: row.file_name,
     // Masked before it is returned or stored: an Aadhaar in a document must
     // not spread into logs, proposals or the UI.
     text: maskAadhaar(text),
     hasTextLayer,
     pages,
+    source: 'PDF_TEXT',
     reason: hasTextLayer ? null : 'SCANNED_NEEDS_OCR',
   }
+}
+
+/** Reads a stored document and returns its text layer. */
+export async function documentText(db, documentId) {
+  const [row] = await db.query(
+    `select d.id, d.doc_type, d.mime_type, d.file_name, f.content
+       from public.documents d
+       join public.document_files f on f.storage_key = d.storage_key
+      where d.id = $1`,
+    [documentId],
+  )
+  if (!row) return null
+  return { id: row.id, docType: row.doc_type, fileName: row.file_name, ...readFileText(Buffer.from(row.content), row.mime_type) }
 }
 
 async function labelledCorpus(db) {
@@ -178,18 +186,12 @@ export async function analyseDocument(db, documentId) {
   if (!doc) return null
 
   if (!doc.hasTextLayer) {
-    const MESSAGES = {
-      IMAGE_UNREADABLE: `This photograph cannot be read: ${(doc.quality?.issues ?? []).join(', ').toLowerCase() || 'quality too poor'}. Ask for a clearer picture.`,
-      OCR_LOW_CONFIDENCE: 'The text in this image does not match any trained typeface closely enough to read. Review it by eye.',
-      IMAGE_DECODE_FAILED: 'This image could not be decoded. Ask for it as a PNG or JPEG.',
-      SCANNED_NEEDS_OCR: 'This PDF is a scan with no text layer. Review it by eye.',
-    }
     return {
       documentId: doc.id,
       fileName: doc.fileName,
       needsOcr: true,
       reason: doc.reason,
-      message: MESSAGES[doc.reason] ?? 'This document could not be read automatically. Review it by eye.',
+      message: unreadableMessage(doc.reason, doc.quality),
       quality: doc.quality ?? null,
       suggestedType: null,
       identifiers: [],

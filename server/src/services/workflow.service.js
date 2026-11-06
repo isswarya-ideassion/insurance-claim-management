@@ -73,7 +73,13 @@ const GUARDS = {
     return missing.length === 0 || `Incomplete intake items: ${missing.map((m) => m.label).join(', ')}`
   },
   async hasDocumentsAwaitingReview(t, claim) {
-    return (await t.count('documents', { claim_id: claim.id, status: 'PENDING_REVIEW' })) > 0
+    if ((await t.count('documents', { claim_id: claim.id, status: 'PENDING_REVIEW' })) > 0) return true
+    // Nothing new to review, but if every required document is already accepted
+    // the claim must not be stranded here: let it go on to document review,
+    // where "Documents complete" can then pass.
+    if (claim.document_exception_at) return true
+    const missing = await missingRequiredDocuments(t, claim)
+    return missing.length === 0 || `No documents are waiting for review, and these required documents are still missing: ${missing.join(', ')}`
   },
   async requiredDocumentsAccepted(t, claim) {
     if (claim.document_exception_at) return true

@@ -289,6 +289,8 @@ export async function runExtraction(ctx, documentId) {
       system: EXTRACTION_SYSTEM,
       effort: 'high',
       schema: EXTRACTION_SCHEMA,
+      // For Beacon, which reads the file with our own PDF/OCR pipeline. Model providers use `content` and ignore this.
+      input: { data, mimeType: document.mime_type, docTypeLabel: humanize(document.doc_type), claimType: claim.claim_type },
       content: [
         fileBlock,
         {
@@ -551,6 +553,8 @@ export async function generateSummary(ctx, claimId) {
       effort: 'medium',
       schema: SUMMARY_SCHEMA,
       content: [{ type: 'text', text: `Recorded claim facts:\n${modelFacts}` }],
+      // For Beacon, which fills fixed sentences from these facts. Model providers use `content` and ignore this.
+      input: factsForModel(facts),
     },
     validate: (raw) => {
       const parsed = summaryOutput.safeParse(raw)

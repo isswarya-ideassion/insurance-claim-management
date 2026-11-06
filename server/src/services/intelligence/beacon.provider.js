@@ -1,4 +1,6 @@
-import { AI_AGENTS } from '../../../../shared/constants.js'
+import { AI_AGENTS, EXTRACTABLE_CLAIM_FIELDS } from '../../../../shared/constants.js'
+import { readFileText, unreadableMessage } from './documentIntelligence.service.js'
+import { extractIndianFields } from './indianFields.js'
 
 /**
  * Beacon — HarborPoint's own claims intelligence.
@@ -399,8 +401,110 @@ function subrogation(input) {
 }
 
 // ---------------------------------------------------------------------------
+// 7. Document extraction (intake parser)
+// ---------------------------------------------------------------------------
+// No model reads the file. Our own pipeline does: the PDF text layer, or our
+// OCR for a photograph, then the statutory Indian formats and labelled lines
+// (indianFields.js). It finds what is printed in a recognisable form, never
+// guesses what is not, and says so when a file cannot be read.
+const EXTRACT_KEYS = EXTRACTABLE_CLAIM_FIELDS.map((f) => f.key)
+
+function intakeParser(input) {
+  const { data, mimeType, docTypeLabel, claimType } = input
+  const read = data ? readFileText(Buffer.from(data, 'base64'), mimeType) : { text: '', hasTextLayer: false, reason: null }
+  const empty = () => ({ value: null, confidence: 0, page: null, quote: null })
+  const fields = Object.fromEntries(EXTRACT_KEYS.map((k) => [k, empty()]))
+
+  if (!read.hasTextLayer) {
+    return { document_type: docTypeLabel || 'Unknown', fields, notes: [unreadableMessage(read.reason, read.quality)] }
+  }
+
+  // Values from a real text layer are firmer than OCR'd ones. Both stay below the
+  // 0.8 bar, so a person confirms every value against the source.
+  const firm = read.source === 'OCR' ? 0.6 : 0.7
+  const loose = read.source === 'OCR' ? 0.3 : 0.4
+  const { identifiers, fields: found } = extractIndianFields(read.text)
+  for (const key of EXTRACT_KEYS) {
+    const raw = found[key]
+    if (raw == null) continue
+    const value = typeof raw === 'object' ? raw.value : raw
+    fields[key] = {
+      value: value == null ? null : String(value),
+      confidence: typeof raw === 'object' && raw.confident === false ? loose : firm,
+      page: null,
+      quote: typeof raw === 'object' ? raw.evidence ?? null : null,
+    }
+  }
+  // A motor document's registration number identifies the asset.
+  const vehicle = identifiers.find((i) => i.type === 'vehicle')
+  if (!fields.affected_asset.value && vehicle && claimType === 'MOTOR') {
+    fields.affected_asset = { value: `Vehicle ${vehicle.value}`, confidence: loose, page: null, quote: vehicle.value }
+  }
+
+  const notes = [`Read by Beacon from the ${read.source === 'OCR' ? 'image using our own OCR' : "PDF's text layer"}; no language model was used.`]
+  // PIN codes are left out: any six digits match, including ones inside a policy number.
+  const shown = identifiers.filter((i) => i.type !== 'pincode')
+  if (shown.length) notes.push(`Identifiers found: ${shown.map((i) => `${i.label} ${i.value}`).join(', ')}.`)
+  const missing = EXTRACT_KEYS.filter((k) => !fields[k].value)
+  if (missing.length) notes.push(`Not found in a recognisable form: ${missing.map((k) => k.replace(/_/g, ' ')).join(', ')}. Check the document by eye.`)
+  return { document_type: docTypeLabel || 'Unknown', fields, notes }
+}
+
+// ---------------------------------------------------------------------------
+// 8. Claim summary
+// ---------------------------------------------------------------------------
+// Fixed sentences filled from the recorded facts the server already gathered
+// (factsForModel in ai-automation.service.js). Every statement traces to a
+// field; nothing is inferred, and no decision or fraud language is produced.
+const words = (s) => String(s ?? '').toLowerCase().replace(/_/g, ' ')
+const day = (d) => (d ? new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }) : null)
+const rupees = (n) => (n == null ? null : `₹${Number(n).toLocaleString('en-IN')}`)
+const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
+const describe = (m) => (typeof m === 'string' ? m : m?.description || m?.label || words(m?.doc_type) || 'an item')
+
+function claimSummary(input) {
+  const { claim = {}, loss = {}, documentsReceived = [], missingInformation = [], pendingActions = [] } = input
+  const sentences = []
+  sentences.push(`${words(claim.claim_type).replace(/^./, (c) => c.toUpperCase())} claim${loss.type ? ` (${words(loss.type)})` : ''}, currently ${words(claim.status)}${claim.opened_at ? `, opened ${day(claim.opened_at)}` : ''}.`)
+  const lossBits = [loss.occurred_at && `on ${day(loss.occurred_at)}`, loss.location && `at ${loss.location}`, loss.affected_asset && `involving ${loss.affected_asset}`].filter(Boolean)
+  if (lossBits.length || loss.estimated_loss != null) {
+    sentences.push(`Loss reported ${lossBits.join(', ')}${loss.estimated_loss != null ? `${lossBits.length ? ';' : ''} estimated loss ${rupees(loss.estimated_loss)}` : ''}.`)
+  }
+  const byStatus = {}
+  for (const d of documentsReceived) byStatus[d.status] = (byStatus[d.status] || 0) + 1
+  sentences.push(documentsReceived.length
+    ? `${plural(documentsReceived.length, 'document')} received: ${Object.entries(byStatus).map(([s, n]) => `${n} ${words(s)}`).join(', ')}.`
+    : 'No documents received yet.')
+  sentences.push(missingInformation.length ? `Missing: ${missingInformation.map(describe).join('; ')}.` : 'Nothing is recorded as missing.')
+  const overdue = pendingActions.filter((a) => a.overdue)
+  sentences.push(pendingActions.length
+    ? `${plural(pendingActions.length, 'pending action')}${overdue.length ? `, ${overdue.length} overdue` : ', none overdue'}.`
+    : 'No pending actions.')
+  if (claim.due_date) sentences.push(claim.overdue ? `The claim is past its stage due date (${day(claim.due_date)}).` : `Stage due ${day(claim.due_date)}.`)
+
+  const actions = []
+  for (const a of overdue) actions.push({ action: `Complete the overdue action: ${a.description}`, reason: `It was due ${day(a.due_at)}.` })
+  const awaiting = documentsReceived.filter((d) => /PENDING|UPLOADED|RECEIVED/.test(d.status))
+  if (awaiting.length) actions.push({ action: `Review the ${plural(awaiting.length, 'document')} awaiting review`, reason: `${awaiting.map((d) => words(d.doc_type)).join(', ')} not yet accepted or rejected.` })
+  if (missingInformation.length) actions.push({ action: 'Request the missing information from the claimant', reason: `Recorded as missing: ${missingInformation.map(describe).join('; ')}.` })
+  const next = pendingActions.find((a) => !a.overdue)
+  if (next && actions.length < 5) actions.push({ action: next.description, reason: next.due_at ? `Due ${day(next.due_at)}.` : 'Open on the claim.' })
+
+  const points = []
+  if (!loss.description || loss.description.trim().length < 60) points.push('The loss description is brief. Confirm the sequence of events with the claimant.')
+  if (loss.estimated_loss == null) points.push('No estimated loss is recorded.')
+  if (loss.occurred_at && claim.opened_at && new Date(claim.opened_at) - new Date(loss.occurred_at) > 30 * DAY) {
+    points.push(`The claim was opened ${daysBetween(loss.occurred_at, claim.opened_at)} days after the loss. Check the notification terms in the policy.`)
+  }
+  const rejected = documentsReceived.filter((d) => d.status === 'REJECTED')
+  if (rejected.length) points.push(`${plural(rejected.length, 'document')} rejected: ${rejected.map((d) => words(d.doc_type)).join(', ')}. Check a replacement was requested.`)
+
+  return { summary: sentences.join(' '), suggested_next_actions: actions.slice(0, 5), points_to_verify: points.slice(0, 5) }
+}
 
 const HANDLERS = {
+  [AI_AGENTS.INTAKE_PARSER]: intakeParser,
+  [AI_AGENTS.CLAIM_SUMMARIZER]: claimSummary,
   [AI_AGENTS.COVERAGE_CHECKER]: coverageCheck,
   [AI_AGENTS.TRIAGE_ROUTER]: triage,
   [AI_AGENTS.RESERVE_RECOMMENDER]: reserve,
@@ -423,9 +527,9 @@ export function createBeaconProvider({ aiError }) {
     async generateJson({ agent, input }) {
       const handler = HANDLERS[agent]
       if (!handler) {
-        // Document extraction and claim summarising need to read free text,
-        // which rules cannot do. Saying so beats returning something empty
-        // that looks like an answer.
+        // Every agent in AI_AGENTS has a rule; this only catches an agent added
+        // later without one. Saying so beats returning something empty that
+        // looks like an answer.
         throw aiError(
           501,
           'AI_AGENT_UNSUPPORTED',

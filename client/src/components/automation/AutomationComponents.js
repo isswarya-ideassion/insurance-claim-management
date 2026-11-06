@@ -47,6 +47,16 @@ export function AiSetupNotice({ status }) {
 /** Explains an AI failure, with a retry when the error is transient. */
 export function AiErrorNotice({ error, onRetry }) {
   if (!error) return null
+  // The rules-based provider (Beacon) cannot run agents that read free text. That is a known limit of
+  // the current setup, not a failure, so say so calmly instead of showing a red error.
+  if (error.code === 'AI_AGENT_UNSUPPORTED') {
+    return (
+      <div role="status" className="rounded-lg border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
+        <p className="font-medium text-foreground">Not available in this setup</p>
+        <p className="mt-0.5">This assistant needs to read free text, which the rules-based AI in use cannot do. Review this item manually.</p>
+      </div>
+    )
+  }
   const retryable = error.details?.retryable
   return (
     <div role="alert" className="rounded-lg border border-red-200 bg-red-50/70 p-3 text-sm text-red-900">

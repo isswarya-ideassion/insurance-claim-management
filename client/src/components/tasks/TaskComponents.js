@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { AlertTriangle, Check, ListChecks, Play, Plus, X } from 'lucide-react'
+import { AlertTriangle, Check, CheckCircle2, Circle, ListChecks, Play, Plus, X } from 'lucide-react'
 import { PRIORITIES, TASK_TYPES, STAFF_ROLES, ROLE_LABELS, humanize } from '@shared/constants.js'
 import { tasksService } from '@/services/workflowService.js'
 import { claimsService } from '@/services/claimsService.js'
@@ -39,6 +39,7 @@ export function TaskTable({ rows, loading, error, onRetry, onChanged, showClaim 
             {t.blocking && <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-slate-600">Blocking</span>}
           </p>
           {t.description && <p className="line-clamp-1 text-xs text-muted-foreground">{t.description}</p>}
+          {t.progress && <TaskProgress steps={t.progress} />}
         </div>
       ),
     },
@@ -69,15 +70,18 @@ export function TaskTable({ rows, loading, error, onRetry, onChanged, showClaim 
       header: <span className="sr-only">Actions</span>,
       cell: (t) =>
         ['OPEN', 'IN_PROGRESS'].includes(t.status) ? (
-          <div className="flex justify-end gap-1">
-            {t.status === 'OPEN' && (
+          <div className="flex items-center justify-end gap-1">
+            {t.system_managed && <span className="whitespace-nowrap text-xs text-muted-foreground">Closes when the claim is routed</span>}
+            {!t.system_managed && t.status === 'OPEN' && (
               <Button size="icon-sm" variant="ghost" aria-label="Start task" title="Start" onClick={() => update(t, { status: 'IN_PROGRESS', ...(t.owner_user_id ? {} : { ownerUserId: user.id }) }, 'Task started')}>
                 <Play />
               </Button>
             )}
-            <Button size="icon-sm" variant="ghost" aria-label="Complete task" title="Complete" onClick={() => update(t, { status: 'DONE' }, 'Task completed')}>
-              <Check />
-            </Button>
+            {!t.system_managed && (
+              <Button size="icon-sm" variant="ghost" aria-label="Complete task" title="Complete" onClick={() => update(t, { status: 'DONE' }, 'Task completed')}>
+                <Check />
+              </Button>
+            )}
             {(!t.blocking || user.roles.some((r) => ['OPS_MANAGER', 'CLAIMS_OPS_MANAGER'].includes(r))) && (
               <Button size="icon-sm" variant="ghost" aria-label="Cancel task" title="Cancel" onClick={() => update(t, { status: 'CANCELLED' }, 'Task cancelled')}>
                 <X />
@@ -100,6 +104,25 @@ export function TaskTable({ rows, loading, error, onRetry, onChanged, showClaim 
       empty={<EmptyState icon={ListChecks} title="No tasks" description="Tasks assigned to you or your team appear here." />}
       caption="Tasks"
     />
+  )
+}
+
+/** Steps of a system-managed task, ticked from what has been recorded on the claim, with who did each one. */
+function TaskProgress({ steps }) {
+  return (
+    <ul className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1" aria-label="Task progress">
+      {steps.map((s) => (
+        <li
+          key={s.key}
+          className={cn('inline-flex items-center gap-1 text-xs', s.done ? 'text-foreground' : 'text-muted-foreground')}
+          title={s.done ? [s.by_name && `By ${s.by_name}`, s.at && formatDateTime(s.at)].filter(Boolean).join(' · ') : 'Not done yet'}
+        >
+          {s.done ? <CheckCircle2 className="size-3.5 text-accent" aria-label="Done" /> : <Circle className="size-3.5" aria-label="Not done" />}
+          {s.label}
+          {s.done && s.by_name && <span className="text-muted-foreground">· {s.by_name}</span>}
+        </li>
+      ))}
+    </ul>
   )
 }
 

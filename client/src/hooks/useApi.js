@@ -51,8 +51,11 @@ export function useAction() {
       if (success) toast.success(typeof success === 'function' ? success(result) : success)
       return result
     } catch (err) {
+      // Validation errors carry the list of problems (field + message); show them so the user knows what to fix.
+      const problems = Array.isArray(err.details) ? err.details.map((d) => d.message).filter(Boolean) : []
+      const lines = [...problems, err.requestId ? `Reference: ${err.requestId}` : null].filter(Boolean)
       toast.error(errorMessage || err.message || 'Something went wrong', {
-        description: err.requestId ? `Reference: ${err.requestId}` : undefined,
+        description: lines.length ? lines.join('\n') : undefined,
       })
       if (rethrow) throw err
       return undefined

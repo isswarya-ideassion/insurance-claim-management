@@ -44,6 +44,10 @@ export async function transitions(req, res) {
   ok(res, await service.getTransitions(req.ctx, req.params.id))
 }
 
+export async function nextSteps(req, res) {
+  ok(res, await service.getNextSteps(req.ctx, req.params.id))
+}
+
 export async function changeStatus(req, res) {
   ok(res, await service.changeStatus(req.ctx, req.params.id, req.body))
 }

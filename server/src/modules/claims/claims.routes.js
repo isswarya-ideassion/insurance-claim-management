@@ -27,6 +27,7 @@ export function claimsRoutes() {
   router.delete('/claims/:id', byId, controller.remove)
   router.post('/claims/:id/submit', byId, validate({ body: submitSchema }), controller.submit)
   router.get('/claims/:id/transitions', byId, controller.transitions)
+  router.get('/claims/:id/next-steps', byId, controller.nextSteps)
   router.post('/claims/:id/transitions', byId, validate({ body: transitionSchema }), controller.changeStatus)
   router.post('/claims/:id/coverage-check', byId, validate({ body: coverageSchema }), controller.coverageCheck)
   router.get('/claims/:id/coverage-results', byId, controller.coverageResults)

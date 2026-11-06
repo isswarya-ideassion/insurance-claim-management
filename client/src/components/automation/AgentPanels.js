@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { CheckCircle2, Clock, Sparkles, XCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { CLAIM_AGENTS, humanize } from '@shared/constants.js'
+import { canSeeTab } from '@shared/permissions.js'
 import { automationService } from '@/services/automationService.js'
 import { useApiQuery } from '@/hooks/useApi.js'
 import { useAuth } from '@/context/AuthContext.js'
@@ -35,10 +36,14 @@ const List = ({ items, empty = 'None' }) => (items?.length ? <ul className="list
 
 /** Who may see an agent's card: whoever may run it or act on it, plus Claims Managers and Compliance & Security. */
 export function useAgentAccess(agent) {
-  const { can, hasRole } = useAuth()
+  const { user, can, hasRole } = useAuth()
   const def = CLAIM_AGENTS[agent]
-  const canRun = can(def.run)
-  const canView = canRun || can(def.apply) || hasRole('OPS_MANAGER', 'COMPLIANCE_SECURITY') || (agent === 'triage-router' && can('compliance.review'))
+  // The server only serves an agent to roles that can see the agent's tab (access.service.js), so
+  // check that here too. Without it, a role with the run/apply permission but not the tab
+  // (e.g. Claims Operations Manager on Reserves/Approvals/Recovery) gets a card that always fails with 403.
+  const tabOk = canSeeTab(user?.roles || [], def.tab)
+  const canRun = tabOk && can(def.run)
+  const canView = tabOk && (canRun || can(def.apply) || hasRole('OPS_MANAGER', 'COMPLIANCE_SECURITY') || (agent === 'triage-router' && can('compliance.review')))
   return { canRun, canView }
 }
 

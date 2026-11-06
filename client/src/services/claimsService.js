@@ -10,6 +10,7 @@ export const claimsService = {
   discardDraft: (id) => api.delete(`/claims/${id}`).then((r) => r.data),
   submit: (id, body) => api.post(`/claims/${id}/submit`, body),
   transitions: (id) => api.get(`/claims/${id}/transitions`).then((r) => r.data),
+  nextSteps: (id) => api.get(`/claims/${id}/next-steps`).then((r) => r.data),
   transition: (id, body) => api.post(`/claims/${id}/transitions`, body).then((r) => r.data),
   coverageCheck: (id, body) => api.post(`/claims/${id}/coverage-check`, body).then((r) => r.data),
   coverageResults: (id) => api.get(`/claims/${id}/coverage-results`).then((r) => r.data),

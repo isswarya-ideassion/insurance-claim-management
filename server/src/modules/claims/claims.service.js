@@ -8,8 +8,10 @@ import {
   STAGE_LABELS,
   CUSTOMER_STATUS_LABELS,
   PRIVACY_NOTICE_VERSION,
+  ROLE_LABELS,
   humanize,
 } from '../../../../shared/constants.js'
+import { transitionsFrom } from '../../../../shared/workflow.js'
 import { can, canSeeTab, visibleTabs, permissionsFor } from '../../../../shared/permissions.js'
 import { businessRule, conflict, forbidden, notFound, validationError } from '../../utils/errors.js'
 import { escapeLike } from '../../db/queryBuilder.js'
@@ -23,7 +25,7 @@ import {
   requireNotOwnClaim,
   requireStaffView,
 } from '../../services/access.service.js'
-import { availableTransitions, lockClaim, missingRequiredDocuments, transitionClaim, hasActiveComplianceHold } from '../../services/workflow.service.js'
+import { availableTransitions, evaluateGuards, lockClaim, missingRequiredDocuments, transitionClaim, hasActiveComplianceHold } from '../../services/workflow.service.js'
 import { recordAudit } from '../../services/audit.service.js'
 import { checkClaimEligibility, evaluatePolicyEligibility, policyForClaim } from '../../services/eligibility.service.js'
 import { requiredArtifacts, severityFor } from '../../services/config.service.js'
@@ -511,6 +513,40 @@ export async function getClaimDetail(ctx, id) {
 export async function getTransitions(ctx, id) {
   const claim = await loadAccessibleClaim(ctx.db, ctx.actor, id)
   return availableTransitions(ctx.db, claim, ctx.actor)
+}
+
+// Moves that end or pause a claim rather than advance it; they are not "the next step".
+const SIDE_EXITS = ['ON_HOLD', 'WITHDRAWN', 'REJECTED']
+
+/**
+ * Who has the next move on a claim and what still stands in the way — for a
+ * staff member with no action of their own (e.g. an adjuster assigned while
+ * the claim is still in intake). Built from the same transition rules and
+ * guard checks as the action buttons, so the two cannot disagree.
+ */
+export async function getNextSteps(ctx, id) {
+  const claim = await loadAccessibleClaim(ctx.db, ctx.actor, id)
+  requireStaffView(ctx.actor, claim)
+  const assigned = {
+    [ROLES.CLAIMS_OPS_MANAGER]: claim.assigned_owner_id,
+    [ROLES.DOCUMENT_REVIEWER]: claim.assigned_reviewer_id,
+    [ROLES.ADJUSTER]: claim.assigned_adjuster_id,
+  }
+  const names = await profileMap(ctx.db, [...Object.values(assigned), claim.customer_id])
+  const rules = transitionsFrom(claim.status).filter((r) => !SIDE_EXITS.includes(r.to) && !(r.resume && r.to !== claim.hold_from_status))
+  const steps = []
+  for (const rule of rules) {
+    const guards = await evaluateGuards(ctx.db, claim, rule)
+    const who = rule.systemOnly
+      ? [{ role: 'SYSTEM', label: 'Happens automatically', name: null }]
+      : rule.roles.map((role) => ({
+          role,
+          label: role === ROLES.CLIENT ? 'Customer' : ROLE_LABELS[role] || humanize(role),
+          name: role === ROLES.CLIENT ? nameOf(names, claim.customer_id) : assigned[role] ? nameOf(names, assigned[role]) : null,
+        }))
+    steps.push({ to: claim.status === rule.to ? null : rule.to, label: rule.label, who, blockedBy: guards.filter((g) => !g.passed).map((g) => g.message) })
+  }
+  return { status: claim.status, statusLabel: STATUS_LABELS[claim.status] || humanize(claim.status), steps }
 }
 
 export async function changeStatus(ctx, id, { toStatus, reason, customerMessage }) {

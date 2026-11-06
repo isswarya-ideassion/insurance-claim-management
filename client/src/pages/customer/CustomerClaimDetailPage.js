@@ -35,13 +35,15 @@ const UPLOAD_STATUSES = ['SUBMITTED', 'POLICY_VERIFICATION', 'DOCUMENTS_REQUIRED
 function Journey({ status }) {
   const current = JOURNEY.findIndex((j) => j.statuses.includes(status))
   if (current < 0) return null
+  // Paid and Closed are end states: reaching them means that step is done, so it gets a tick too.
+  const finished = ['PAID', 'CLOSED'].includes(status)
   return (
     <ol className="mt-5 grid grid-cols-3 gap-2 sm:grid-cols-6" aria-label="Claim progress">
       {JOURNEY.map((j, i) => (
         <li key={j.label} className="flex flex-col gap-1.5">
           <span className={cn('h-1.5 rounded-full', i <= current ? 'bg-accent' : 'bg-muted')} />
           <span className={cn('flex items-center gap-1 text-xs', i === current ? 'font-semibold text-foreground' : 'text-muted-foreground')}>
-            {i < current ? <CheckCircle2 className="size-3 text-accent" /> : <Circle className="size-3" />}
+            {i < current || (finished && i === current) ? <CheckCircle2 className="size-3 text-accent" /> : <Circle className="size-3" />}
             {j.label}
           </span>
         </li>
