@@ -49,7 +49,11 @@ export function useAction() {
     try {
       const result = await fn()
       if (success) toast.success(typeof success === 'function' ? success(result) : success)
-      return result
+      // Success must be distinguishable from failure (which returns undefined). Many callers run a
+      // void action such as `async () => { await save(); await reload() }` and close a dialog on a
+      // truthy result; returning its undefined left those dialogs open after a successful submit.
+      // An API that answers with `data: null` is a success too.
+      return result ?? true
     } catch (err) {
       // Validation errors carry the list of problems (field + message); show them so the user knows what to fix.
       const problems = Array.isArray(err.details) ? err.details.map((d) => d.message).filter(Boolean) : []

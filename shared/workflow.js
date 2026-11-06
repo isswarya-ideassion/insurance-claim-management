@@ -81,6 +81,9 @@ const base = [
   { from: S.ON_HOLD, to: S.REJECTED, roles: [MGR], requiresReason: true, label: 'Deny claim' },
 ]
 
+/** Moves that pause or end a claim rather than advance it (shown as cautionary actions, never as "the next step"). */
+export const SIDE_EXIT_STATUSES = [S.REJECTED, S.WITHDRAWN, S.ON_HOLD]
+
 export const HOLDABLE_STATUSES = [
   S.SUBMITTED,
   S.POLICY_VERIFICATION,

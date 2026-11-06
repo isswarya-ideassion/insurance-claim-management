@@ -1,13 +1,13 @@
 import { useState } from 'react'
 import { ArrowRight, Clock, Lock } from 'lucide-react'
 import { STATUS_LABELS } from '@shared/constants.js'
+import { SIDE_EXIT_STATUSES } from '@shared/workflow.js'
 import { claimsService } from '@/services/claimsService.js'
 import { useApiQuery, useAction } from '@/hooks/useApi.js'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog.js'
 import { Button } from '@/components/ui/button.js'
 import { Tooltip, Skeleton } from '@/components/ui/misc.js'
-
-const DESTRUCTIVE = ['REJECTED', 'WITHDRAWN', 'ON_HOLD']
+import { Notice } from '@/components/common/Notice.js'
 
 /** Who has the next move on this claim, and what is still missing before they can make it. */
 function WaitingOn({ claimId, status, version }) {
@@ -16,20 +16,16 @@ function WaitingOn({ claimId, status, version }) {
   if (!data || !data.steps.length) return null
   const people = (who) => who.map((w) => (w.name ? `${w.name} (${w.label})` : w.label)).join(' or ')
   return (
-    <div className="flex items-start gap-2.5 rounded-lg bg-muted/50 p-3 text-sm" role="status">
-      <Clock className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-      <div className="min-w-0 space-y-1.5">
-        <p className="font-medium">Nothing for you to do yet. The claim is in {data.statusLabel}.</p>
-        <ul className="space-y-1 text-muted-foreground">
-          {data.steps.map((s) => (
-            <li key={s.label}>
-              <span className="text-foreground">{s.label}</span>: waiting for {people(s.who)}.
-              {s.blockedBy.length > 0 && <span> Still needed: {s.blockedBy.join(' ')}</span>}
-            </li>
-          ))}
-        </ul>
-      </div>
-    </div>
+    <Notice icon={Clock} title={`Nothing for you to do yet. The claim is in ${data.statusLabel}.`}>
+      <ul className="space-y-1">
+        {data.steps.map((s) => (
+          <li key={s.label}>
+            <span className="text-foreground">{s.label}</span>: waiting for {people(s.who)}.
+            {s.blockedBy.length > 0 && <span> Still needed: {s.blockedBy.join(' ')}</span>}
+          </li>
+        ))}
+      </ul>
+    </Notice>
   )
 }
 
@@ -47,7 +43,7 @@ export function TransitionActions({ claimId, status, version, onChanged, custome
   // No move of your own: say who has the next one and what it is waiting for, instead of an empty bar.
   if (options.length === 0) return customer ? null : <WaitingOn claimId={claimId} status={status} version={version} />
   // Only hold / deny / withdraw available: the claim's next real move belongs to someone else, so say who.
-  const onlySideExits = !customer && options.every((t) => DESTRUCTIVE.includes(t.to))
+  const onlySideExits = !customer && options.every((t) => SIDE_EXIT_STATUSES.includes(t.to))
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -62,8 +58,8 @@ export function TransitionActions({ claimId, status, version, onChanged, custome
           <Button
             key={t.to}
             size="sm"
-            variant={blocked ? 'outline' : DESTRUCTIVE.includes(t.to) ? 'outline' : 'accent'}
-            className={DESTRUCTIVE.includes(t.to) && !blocked ? 'border-red-200 text-red-700 hover:bg-red-50' : undefined}
+            variant={blocked ? 'outline' : SIDE_EXIT_STATUSES.includes(t.to) ? 'outline' : 'accent'}
+            className={SIDE_EXIT_STATUSES.includes(t.to) && !blocked ? 'border-red-200 text-red-700 hover:bg-red-50' : undefined}
             disabled={blocked}
             onClick={() => setSelected(t)}
           >
@@ -87,7 +83,7 @@ export function TransitionActions({ claimId, status, version, onChanged, custome
         title={selected?.label}
         description={selected && `The claim will move to ${STATUS_LABELS[selected.to]}. This is recorded in the status history and audit log.`}
         confirmLabel={selected?.label}
-        variant={selected && DESTRUCTIVE.includes(selected.to) ? 'destructive' : 'default'}
+        variant={selected && SIDE_EXIT_STATUSES.includes(selected.to) ? 'destructive' : 'default'}
         requireReason={selected?.requiresReason}
         onConfirm={async (reason) => {
           const result = await action.run(() => claimsService.transition(claimId, { toStatus: selected.to, reason: reason || undefined }), {

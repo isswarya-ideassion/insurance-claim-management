@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Navigate, useParams, useSearchParams } from 'react-router-dom'
-import { CheckCircle2, Circle, FlaskConical, Upload } from 'lucide-react'
+import { FlaskConical, Upload } from 'lucide-react'
+import { StepMark } from '@/components/common/StepMark.js'
 import { POLICY_TYPE_LABELS, humanize } from '@shared/constants.js'
 import { claimsService } from '@/services/claimsService.js'
 import { documentsService } from '@/services/documentsService.js'
@@ -43,7 +44,7 @@ function Journey({ status }) {
         <li key={j.label} className="flex flex-col gap-1.5">
           <span className={cn('h-1.5 rounded-full', i <= current ? 'bg-accent' : 'bg-muted')} />
           <span className={cn('flex items-center gap-1 text-xs', i === current ? 'font-semibold text-foreground' : 'text-muted-foreground')}>
-            {i < current || (finished && i === current) ? <CheckCircle2 className="size-3 text-accent" /> : <Circle className="size-3" />}
+            <StepMark done={i < current || (finished && i === current)} className="size-3" />
             {j.label}
           </span>
         </li>

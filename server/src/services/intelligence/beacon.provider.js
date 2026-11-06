@@ -1,4 +1,5 @@
-import { AI_AGENTS, EXTRACTABLE_CLAIM_FIELDS } from '../../../../shared/constants.js'
+import { AI_AGENTS, EXTRACTABLE_CLAIM_FIELDS, humanize } from '../../../../shared/constants.js'
+import { formatInr } from '../../utils/format.js'
 import { readFileText, unreadableMessage } from './documentIntelligence.service.js'
 import { extractIndianFields } from './indianFields.js'
 
@@ -456,9 +457,10 @@ function intakeParser(input) {
 // Fixed sentences filled from the recorded facts the server already gathered
 // (factsForModel in ai-automation.service.js). Every statement traces to a
 // field; nothing is inferred, and no decision or fraud language is produced.
-const words = (s) => String(s ?? '').toLowerCase().replace(/_/g, ' ')
+// Mid-sentence wording of a code ("PROOF_OF_LOSS" -> "proof of loss"), from the shared humanize.
+const words = (s) => humanize(s).toLowerCase()
 const day = (d) => (d ? new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' }) : null)
-const rupees = (n) => (n == null ? null : `₹${Number(n).toLocaleString('en-IN')}`)
+const rupees = (n) => (n == null ? null : formatInr(n))
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
 const describe = (m) => (typeof m === 'string' ? m : m?.description || m?.label || words(m?.doc_type) || 'an item')
 

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { AlertTriangle, Check, CheckCircle2, Circle, ListChecks, Play, Plus, X } from 'lucide-react'
+import { AlertTriangle, Check, ListChecks, Play, Plus, X } from 'lucide-react'
+import { StepMark } from '@/components/common/StepMark.js'
 import { PRIORITIES, TASK_TYPES, STAFF_ROLES, ROLE_LABELS, humanize } from '@shared/constants.js'
 import { tasksService } from '@/services/workflowService.js'
 import { claimsService } from '@/services/claimsService.js'
@@ -117,7 +118,7 @@ function TaskProgress({ steps }) {
           className={cn('inline-flex items-center gap-1 text-xs', s.done ? 'text-foreground' : 'text-muted-foreground')}
           title={s.done ? [s.by_name && `By ${s.by_name}`, s.at && formatDateTime(s.at)].filter(Boolean).join(' · ') : 'Not done yet'}
         >
-          {s.done ? <CheckCircle2 className="size-3.5 text-accent" aria-label="Done" /> : <Circle className="size-3.5" aria-label="Not done" />}
+          <StepMark done={s.done} />
           {s.label}
           {s.done && s.by_name && <span className="text-muted-foreground">· {s.by_name}</span>}
         </li>

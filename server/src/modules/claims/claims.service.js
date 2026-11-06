@@ -3,6 +3,7 @@ import {
   ROLES,
   ACTIVE_STATUSES,
   INTAKE_CHECKLIST,
+  INTAKE_STATUSES,
   OPEN_TASK_STATUSES,
   STATUS_LABELS,
   STAGE_LABELS,
@@ -11,7 +12,7 @@ import {
   ROLE_LABELS,
   humanize,
 } from '../../../../shared/constants.js'
-import { transitionsFrom } from '../../../../shared/workflow.js'
+import { SIDE_EXIT_STATUSES, transitionsFrom } from '../../../../shared/workflow.js'
 import { can, canSeeTab, visibleTabs, permissionsFor } from '../../../../shared/permissions.js'
 import { businessRule, conflict, forbidden, notFound, validationError } from '../../utils/errors.js'
 import { escapeLike } from '../../db/queryBuilder.js'
@@ -515,9 +516,6 @@ export async function getTransitions(ctx, id) {
   return availableTransitions(ctx.db, claim, ctx.actor)
 }
 
-// Moves that end or pause a claim rather than advance it; they are not "the next step".
-const SIDE_EXITS = ['ON_HOLD', 'WITHDRAWN', 'REJECTED']
-
 /**
  * Who has the next move on a claim and what still stands in the way — for a
  * staff member with no action of their own (e.g. an adjuster assigned while
@@ -533,7 +531,7 @@ export async function getNextSteps(ctx, id) {
     [ROLES.ADJUSTER]: claim.assigned_adjuster_id,
   }
   const names = await profileMap(ctx.db, [...Object.values(assigned), claim.customer_id])
-  const rules = transitionsFrom(claim.status).filter((r) => !SIDE_EXITS.includes(r.to) && !(r.resume && r.to !== claim.hold_from_status))
+  const rules = transitionsFrom(claim.status).filter((r) => !SIDE_EXIT_STATUSES.includes(r.to) && !(r.resume && r.to !== claim.hold_from_status))
   const steps = []
   for (const rule of rules) {
     const guards = await evaluateGuards(ctx.db, claim, rule)
@@ -575,7 +573,7 @@ export async function verifyCoverage(ctx, id, { result, notes, clauseRefs, aiRun
     await loadAccessibleClaim(t, ctx.actor, id)
     const claim = await lockClaim(t, id)
     requireNotOwnClaim(ctx.actor, claim)
-    if (!['SUBMITTED', 'POLICY_VERIFICATION', 'REOPENED'].includes(claim.status)) {
+    if (!INTAKE_STATUSES.includes(claim.status)) {
       throw businessRule('INVALID_STAGE', 'Coverage verification is only possible during intake')
     }
     const policy = await policyForClaim(t, claim)
@@ -633,7 +631,7 @@ export async function updateIntakeChecklist(ctx, id, { items }) {
     await loadAccessibleClaim(t, ctx.actor, id)
     const claim = await lockClaim(t, id)
     requireNotOwnClaim(ctx.actor, claim)
-    if (!['SUBMITTED', 'POLICY_VERIFICATION', 'REOPENED'].includes(claim.status)) {
+    if (!INTAKE_STATUSES.includes(claim.status)) {
       throw businessRule('INVALID_STAGE', 'The intake checklist can only be changed during intake')
     }
     const checklist = { ...(claim.intake_checklist || {}) }

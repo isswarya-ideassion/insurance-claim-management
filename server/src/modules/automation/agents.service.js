@@ -3,6 +3,7 @@ import { z } from 'zod'
 import {
   ACTIVE_STATUSES,
   AI_AGENTS,
+  INTAKE_STATUSES,
   CLAIM_AGENTS,
   COVERAGE_LINES,
   FRAUD_SEVERITIES,
@@ -135,7 +136,7 @@ const coverageOutput = z.object({
 
 const coverageAgent = {
   async prepare(t, ctx, claim) {
-    if (!['SUBMITTED', 'POLICY_VERIFICATION', 'REOPENED'].includes(claim.status)) {
+    if (!INTAKE_STATUSES.includes(claim.status)) {
       throw businessRule('INVALID_STAGE', 'The coverage check runs during intake (submitted, coverage verification or reopened)')
     }
     const policy = await policyForClaim(t, claim)

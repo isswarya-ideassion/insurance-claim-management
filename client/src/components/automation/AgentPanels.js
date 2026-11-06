@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { CheckCircle2, Clock, Sparkles, XCircle } from 'lucide-react'
 import { toast } from 'sonner'
-import { CLAIM_AGENTS, humanize } from '@shared/constants.js'
-import { canSeeTab } from '@shared/permissions.js'
+import { CLAIM_AGENTS, INTAKE_STATUSES, humanize } from '@shared/constants.js'
+import { CLAIM_TABS } from '@shared/permissions.js'
 import { automationService } from '@/services/automationService.js'
 import { useApiQuery } from '@/hooks/useApi.js'
 import { useAuth } from '@/context/AuthContext.js'
@@ -36,12 +36,12 @@ const List = ({ items, empty = 'None' }) => (items?.length ? <ul className="list
 
 /** Who may see an agent's card: whoever may run it or act on it, plus Claims Managers and Compliance & Security. */
 export function useAgentAccess(agent) {
-  const { user, can, hasRole } = useAuth()
+  const { can, hasRole } = useAuth()
   const def = CLAIM_AGENTS[agent]
   // The server only serves an agent to roles that can see the agent's tab (access.service.js), so
   // check that here too. Without it, a role with the run/apply permission but not the tab
   // (e.g. Claims Operations Manager on Reserves/Approvals/Recovery) gets a card that always fails with 403.
-  const tabOk = canSeeTab(user?.roles || [], def.tab)
+  const tabOk = hasRole(...(CLAIM_TABS.find((t) => t.key === def.tab)?.roles || []))
   const canRun = tabOk && can(def.run)
   const canView = tabOk && (canRun || can(def.apply) || hasRole('OPS_MANAGER', 'COMPLIANCE_SECURITY') || (agent === 'triage-router' && can('compliance.review')))
   return { canRun, canView }
@@ -144,7 +144,7 @@ const clauseText = (c) => `${c.id}: ${c.text}`
 function CoverageApply({ run, apply, pending, claim }) {
   const [result, setResult] = useState(run.result.result)
   const [notes, setNotes] = useState('')
-  if (!['SUBMITTED', 'POLICY_VERIFICATION', 'REOPENED'].includes(claim.status)) return <p className="text-muted-foreground">Coverage can only be recorded during intake.</p>
+  if (!INTAKE_STATUSES.includes(claim.status)) return <p className="text-muted-foreground">Coverage can only be recorded during intake.</p>
   return (
     <>
       <div className="grid gap-3 sm:grid-cols-2">

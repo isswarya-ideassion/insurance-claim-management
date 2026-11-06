@@ -1,4 +1,4 @@
-import { ROLES, OPEN_TASK_STATUSES, INTAKE_CHECKLIST } from '../../../../shared/constants.js'
+import { ROLES, OPEN_TASK_STATUSES, INTAKE_CHECKLIST, INTAKE_STATUSES } from '../../../../shared/constants.js'
 import { hasAnyRole } from '../../../../shared/permissions.js'
 import { businessRule, forbidden, notFound, validationError } from '../../utils/errors.js'
 import { pageMeta, toOffset } from '../../utils/http.js'
@@ -55,8 +55,6 @@ async function intakeProgress(db, tasks, claimMap) {
   }
   return out
 }
-
-const INTAKE_STATUSES = ['SUBMITTED', 'POLICY_VERIFICATION', 'REOPENED']
 
 async function decorate(db, tasks) {
   const claimIds = [...new Set(tasks.map((t) => t.claim_id).filter(Boolean))]

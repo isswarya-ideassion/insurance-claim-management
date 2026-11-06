@@ -4,6 +4,7 @@ import { REMINDER_STATUS_LABELS, REMINDER_TYPE_LABELS } from '@shared/constants.
 import { automationService } from '@/services/automationService.js'
 import { useAction } from '@/hooks/useApi.js'
 import { Badge } from '@/components/ui/badge.js'
+import { Notice } from '@/components/common/Notice.js'
 import { Button } from '@/components/ui/button.js'
 import { Label, Textarea } from '@/components/ui/input.js'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog.js'
@@ -47,27 +48,20 @@ export function AiSetupNotice({ status }) {
 /** Explains an AI failure, with a retry when the error is transient. */
 export function AiErrorNotice({ error, onRetry }) {
   if (!error) return null
-  // The rules-based provider (Beacon) cannot run agents that read free text. That is a known limit of
-  // the current setup, not a failure, so say so calmly instead of showing a red error.
+  // An assistant the configured provider has no rule for is a known limit of the setup, not a failure.
   if (error.code === 'AI_AGENT_UNSUPPORTED') {
-    return (
-      <div role="status" className="rounded-lg border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
-        <p className="font-medium text-foreground">Not available in this setup</p>
-        <p className="mt-0.5">This assistant needs to read free text, which the rules-based AI in use cannot do. Review this item manually.</p>
-      </div>
-    )
+    return <Notice title="Not available in this setup">This assistant is not available with the AI provider in use. Review this item manually.</Notice>
   }
   const retryable = error.details?.retryable
   return (
-    <div role="alert" className="rounded-lg border border-red-200 bg-red-50/70 p-3 text-sm text-red-900">
-      <p className="font-medium">{error.code === 'AI_NOT_CONFIGURED' ? 'AI automation is not configured' : 'The AI step did not complete'}</p>
-      <p className="mt-0.5 text-red-900/80">{error.message}</p>
+    <Notice tone="danger" title={error.code === 'AI_NOT_CONFIGURED' ? 'AI automation is not configured' : 'The AI step did not complete'}>
+      <p className="text-red-900/80">{error.message}</p>
       {retryable && onRetry && (
-        <Button size="sm" variant="outline" className="mt-2" onClick={onRetry}>
+        <Button size="sm" variant="outline" className="mt-1" onClick={onRetry}>
           Try again
         </Button>
       )}
-    </div>
+    </Notice>
   )
 }
 

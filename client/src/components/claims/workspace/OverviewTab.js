@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { AlertTriangle, CheckCircle2, Copy, Flag, MessageSquare, ShieldAlert, ShieldCheck, StickyNote, XCircle } from 'lucide-react'
 
 import { Link } from 'react-router-dom'
-import { POLICY_TYPE_LABELS, PRIORITIES, STAGE_LABELS, humanize } from '@shared/constants.js'
+import { INTAKE_STATUSES, POLICY_TYPE_LABELS, PRIORITIES, STAGE_LABELS, humanize } from '@shared/constants.js'
 import { claimsService } from '@/services/claimsService.js'
 import { useApiQuery, useAction } from '@/hooks/useApi.js'
 import { useAuth } from '@/context/AuthContext.js'
@@ -17,7 +17,6 @@ import { PayeeIntake } from './PayeeIntake.js'
 import { formatDateTime, formatMoney, formatRelative, toDateTimeLocal, formatLocation } from '@/utils/format.js'
 import { TriageAgentCard } from '@/components/automation/AgentPanels.js'
 
-const INTAKE_STAGES = ['SUBMITTED', 'POLICY_VERIFICATION', 'REOPENED']
 
 /** Stage SLA clocks: running, paused (for example while the client owes documents) or stopped. */
 function SlaClocks({ clocks = [] }) {
@@ -53,7 +52,7 @@ function IntakePanel({ detail, reload }) {
   const action = useAction()
   const [notes, setNotes] = useState('')
   const [clauses, setClauses] = useState('')
-  const editable = INTAKE_STAGES.includes(claim.status)
+  const editable = INTAKE_STATUSES.includes(claim.status)
 
   function record(result, success) {
     const clauseRefs = clauses.split(',').map((c) => c.trim()).filter(Boolean)
@@ -324,7 +323,7 @@ export function OverviewTab({ detail, reload }) {
         </div>
       </div>
 
-      {can('claims.verifyCoverage') && (INTAKE_STAGES.includes(claim.status) || detail.coverage) && <IntakePanel detail={detail} reload={reload} />}
+      {can('claims.verifyCoverage') && (INTAKE_STATUSES.includes(claim.status) || detail.coverage) && <IntakePanel detail={detail} reload={reload} />}
       <NotesPanel claimId={claim.id} />
 
       <ConfirmDialog
