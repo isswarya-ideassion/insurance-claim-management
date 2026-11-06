@@ -46,9 +46,16 @@ export function TransitionActions({ claimId, status, version, onChanged, custome
   const options = (query.data || []).filter((t) => !customer || t.to === 'WITHDRAWN' || t.allowed)
   // No move of your own: say who has the next one and what it is waiting for, instead of an empty bar.
   if (options.length === 0) return customer ? null : <WaitingOn claimId={claimId} status={status} version={version} />
+  // Only hold / deny / withdraw available: the claim's next real move belongs to someone else, so say who.
+  const onlySideExits = !customer && options.every((t) => DESTRUCTIVE.includes(t.to))
 
   return (
     <div className="flex flex-wrap items-center gap-2">
+      {onlySideExits && (
+        <div className="basis-full">
+          <WaitingOn claimId={claimId} status={status} version={version} />
+        </div>
+      )}
       {options.map((t) => {
         const blocked = !t.allowed
         const button = (
