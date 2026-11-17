@@ -22,6 +22,8 @@ import { aiError, aiNotConfigured, aiStatus } from '../../services/ai.service.js
 import { profileMap, nameOf } from '../../services/presenters.js'
 import { logger } from '../../config/logger.js'
 import { computeDocumentChecklist } from './reminders.service.js'
+import { imageAlertsForRun } from './image-alerts.service.js'
+import { imageFraudAlertsSchema, isImageMime } from '../../services/intelligence/imageForensics.service.js'
 
 export const AI_DISCLAIMER =
   'AI-generated suggestions can be wrong. They support your work and never approve, reject, settle or make fraud determinations on a claim.'
@@ -280,6 +282,12 @@ export async function runExtraction(ctx, documentId) {
 
   const now = new Date()
   const agent = AI_AGENTS.INTAKE_PARSER
+  // Beacon AI Image Forensics runs locally on every image, whichever provider
+  // reads the fields: duplicate file, metadata tampering, OCR total and date.
+  // Computed here from the stored bytes, never taken from model output.
+  const imageFraudAlerts = isImageMime(document.mime_type)
+    ? await imageAlertsForRun(ctx.db, claim, { documentId: document.id, requestId: ctx.actor.requestId })
+    : []
   const { base, result } = await runAi(ctx, {
     agent,
     claimId: claim.id,
@@ -290,7 +298,7 @@ export async function runExtraction(ctx, documentId) {
       effort: 'high',
       schema: EXTRACTION_SCHEMA,
       // For Beacon, which reads the file with our own PDF/OCR pipeline. Model providers use `content` and ignore this.
-      input: { data, mimeType: document.mime_type, docTypeLabel: humanize(document.doc_type), claimType: claim.claim_type },
+      input: { data, mimeType: document.mime_type, docTypeLabel: humanize(document.doc_type), claimType: claim.claim_type, imageForensics: imageFraudAlerts },
       content: [
         fileBlock,
         {
@@ -302,7 +310,7 @@ export async function runExtraction(ctx, documentId) {
     validate: (raw) => {
       const parsed = extractionOutput.safeParse(raw)
       if (!parsed.success) throw aiError(502, 'AI_INVALID_OUTPUT', 'The AI response did not match the expected structure, so it was not used.', true)
-      return buildExtractionResult(parsed.data, { claim, policy, document }, now)
+      return { ...buildExtractionResult(parsed.data, { claim, policy, document }, now), imageFraudAlerts: imageFraudAlertsSchema.parse(imageFraudAlerts) }
     },
   })
 
@@ -324,7 +332,13 @@ export async function runExtraction(ctx, documentId) {
       entityType: 'ai_run',
       entityId: run.id,
       claimId: claim.id,
-      metadata: { requestedBy: ctx.actor.id, documentId: document.id, promptVersion: run.prompt_version, applicableFields: result.fields.filter((f) => f.applicable).map((f) => f.key) },
+      metadata: {
+        requestedBy: ctx.actor.id,
+        documentId: document.id,
+        promptVersion: run.prompt_version,
+        applicableFields: result.fields.filter((f) => f.applicable).map((f) => f.key),
+        imageFraudAlerts: result.imageFraudAlerts.map((a) => a.riskLevel),
+      },
     })
     logRun(ctx, run)
     return presentRun(run, {})

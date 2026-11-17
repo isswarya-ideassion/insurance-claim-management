@@ -21,6 +21,7 @@ import {
   ReminderTypeLabel,
   RuleBadge,
 } from '@/components/automation/AutomationComponents.js'
+import { RunImageForensicsAlert } from '@/components/automation/ImageForensicsAlert.js'
 import { formatDate, formatDateTime, formatMoney, formatRelative } from '@/utils/format.js'
 import { cn } from '@/lib/utils.js'
 
@@ -319,12 +320,16 @@ function ExtractionReview({ run, claim, onChanged }) {
           <AiBadge />
         </div>
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          {run.review_status === 'APPLIED' && <Badge tone="green">Applied: {run.applied_fields.length} field(s)</Badge>}
+          {run.review_status === 'APPLIED' && (run.applied_fields || []).some((f) => f !== 'image_fraud_alert') && (
+            <Badge tone="green">Applied: {run.applied_fields.filter((f) => f !== 'image_fraud_alert').length} field(s)</Badge>
+          )}
+          {(run.applied_fields || []).includes('image_fraud_alert') && <Badge tone="red">Image alert accepted</Badge>}
           {run.review_status === 'DISCARDED' && <Badge tone="neutral">Discarded</Badge>}
           {pending && <Badge tone="amber">Awaiting review</Badge>}
           <span>{formatDateTime(run.created_at)}</span>
         </div>
       </div>
+      <RunImageForensicsAlert run={run} className="m-3" onAccepted={() => onChanged()} />
       <div className="overflow-x-auto">
         <Table>
           <TableHeader>

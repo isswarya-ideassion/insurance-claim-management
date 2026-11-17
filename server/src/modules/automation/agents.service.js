@@ -30,6 +30,8 @@ import { createRecovery } from '../closure/closure.service.js'
 import { assignClaim } from '../assignments/assignments.service.js'
 import { SEVERITY_FACTOR } from '../compliance/compliance.service.js'
 import { AI_DISCLAIMER, PROMPT_VERSIONS, agentActor, logRun, presentRun, runAi, sha256 } from './ai-automation.service.js'
+import { imageAlertsForRun } from './image-alerts.service.js'
+import { imageFraudAlertsSchema } from '../../services/intelligence/imageForensics.service.js'
 
 /*
  * Claim agents (PRD section 3). Each agent reads minimized claim facts, returns
@@ -232,6 +234,8 @@ const triageAgent = {
       getSegmentConfig(t, claim.segment, 'fraud_review_threshold'),
     ])
     const policy = claim.policy_id ? await t.findById('policies', claim.policy_id) : null
+    // Beacon AI Image Forensics: local checks on every image on the claim.
+    const imageFraudAlerts = await imageAlertsForRun(t, claim, { requestId: ctx.actor.requestId })
     const aliases = candidates.map((c, i) => ({ alias: `A${i + 1}`, ...c }))
     const byAlias = new Map(aliases.map((a) => [a.alias, a]))
     const codeSet = codes.map((c) => c.code)
@@ -265,6 +269,12 @@ const triageAgent = {
         severity_thresholds: thresholds,
         fraud_reason_taxonomy: codes.map((c) => ({ code: c.code, description: c.description })),
         candidate_adjusters: aliases.map((a) => ({ alias: a.alias, open_claims: a.open_claims, high_priority_open: a.high_priority_open, claims_handled_by_type: a.experience })),
+        // Minimised: check types and severities only — no file names, hashes or other claims' numbers.
+        image_forensics: imageFraudAlerts.map((a) => ({
+          risk_level: a.riskLevel,
+          confidence: a.confidence,
+          checks: a.checks.map((c) => ({ check: c.check, code: c.code, severity: c.severity })),
+        })),
       },
       validate(raw) {
         const o = parseOutput(
@@ -299,6 +309,8 @@ const triageAgent = {
           candidates: aliases.map((a) => ({ id: a.id, name: a.full_name, openClaims: a.open_claims })),
           rationale: clip(o.rationale, 1500),
           confidence: o.confidence,
+          // Computed locally from the stored images, never from model output.
+          imageFraudAlerts: imageFraudAlertsSchema.parse(imageFraudAlerts),
           // Fraud-related output always needs a person (FR-X4).
           needsHuman: true,
         }
@@ -863,8 +875,11 @@ function canApply(roles, agent) {
   return agent === AI_AGENTS.TRIAGE_ROUTER ? TRIAGE_APPLY.some((p) => can(roles, p)) : can(roles, CLAIM_AGENTS[agent].apply)
 }
 
-function canView(roles, def) {
-  return can(roles, def.run) || can(roles, def.apply) || roles.includes(ROLES.OPS_MANAGER) || roles.includes(ROLES.COMPLIANCE_SECURITY)
+function canView(roles, def, agent) {
+  if (can(roles, def.run) || can(roles, def.apply) || roles.includes(ROLES.OPS_MANAGER) || roles.includes(ROLES.COMPLIANCE_SECURITY)) return true
+  // Adjusters and Document Reviewers see the triage card for its image
+  // forensics alert. maskTriage still hides the score and reasons from them.
+  return agent === AI_AGENTS.TRIAGE_ROUTER && can(roles, 'fraud.imageAlerts.view')
 }
 
 function presentAgentRun(run, actor, names = {}) {
@@ -931,7 +946,7 @@ export async function listAgentRuns(ctx, claimId, agent) {
   const def = definition(agent)
   const claim = await loadAccessibleClaim(ctx.db, ctx.actor, claimId)
   requireTab(ctx.actor, claim, def.tab)
-  if (!canView(ctx.actor.roles, def)) throw forbidden('Your role cannot view this agent')
+  if (!canView(ctx.actor.roles, def, agent)) throw forbidden('Your role cannot view this agent')
   const runs = await ctx.db.findMany('ai_runs', { where: { claim_id: claimId, agent }, orderBy: [['created_at', 'desc']], limit: 5 })
   const names = await profileMap(ctx.db, runs.flatMap((r) => [r.requested_by, r.decided_by]))
   return { runs: runs.map((r) => presentAgentRun(r, ctx.actor, names)), configured: ctx.ai.configured, disclaimer: AI_DISCLAIMER }

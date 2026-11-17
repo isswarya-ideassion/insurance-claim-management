@@ -145,6 +145,30 @@ function triage(input) {
   }
   if (!prior.length) flag('NO_TRADING_HISTORY', 'LOW', 'No prior claim history on this policy.')
 
+  // Beacon AI Image Forensics, computed locally from the claim's images. One
+  // reason per code, at the most severe band any image produced for it.
+  const imageChecks = (input.image_forensics ?? []).flatMap((a) => a.checks ?? [])
+  const IMAGE_EXPLANATIONS = {
+    DUPLICATE_IMAGE: 'The same image file is filed on another claim.',
+    EDITING_SOFTWARE: 'Image metadata names editing software.',
+    AI_GENERATED: 'Image metadata carries a generative-AI marker.',
+    MODIFIED_AFTER_CAPTURE: 'Image metadata records edits after capture.',
+    CAPTURED_BEFORE_LOSS: 'Image capture date is earlier than the date of loss.',
+    AMOUNT_MISMATCH: 'The bill total read from the image differs from the claimed amount.',
+    BILL_DATE_BEFORE_LOSS: 'The bill date read from the image is before the date of loss.',
+  }
+  const rank = { LOW: 0, MEDIUM: 1, HIGH: 2 }
+  const byCode = new Map()
+  for (const c of imageChecks) {
+    const prev = byCode.get(c.code)
+    if (!prev || rank[c.severity] > rank[prev.severity]) byCode.set(c.code, { ...c, explanations: new Set([...(prev?.explanations ?? []), IMAGE_EXPLANATIONS[c.check]]) })
+    else prev.explanations.add(IMAGE_EXPLANATIONS[c.check])
+  }
+  for (const [code, c] of byCode) {
+    if (reasons.some((r) => r.code === code)) continue
+    flag(code, c.severity, `Image forensics: ${[...c.explanations].filter(Boolean).join(' ')}`)
+  }
+
   // The score is the sum of each matched code's weight scaled by its band —
   // the same arithmetic compliance.service.js already applies to flags a human
   // records, so a Beacon score and a staff-entered score are comparable.
@@ -411,13 +435,18 @@ function subrogation(input) {
 const EXTRACT_KEYS = EXTRACTABLE_CLAIM_FIELDS.map((f) => f.key)
 
 function intakeParser(input) {
-  const { data, mimeType, docTypeLabel, claimType } = input
+  const { data, mimeType, docTypeLabel, claimType, imageForensics = [] } = input
   const read = data ? readFileText(Buffer.from(data, 'base64'), mimeType) : { text: '', hasTextLayer: false, reason: null }
   const empty = () => ({ value: null, confidence: 0, page: null, quote: null })
   const fields = Object.fromEntries(EXTRACT_KEYS.map((k) => [k, empty()]))
+  // Images are read like any other document; the forensics result (computed
+  // locally by the caller) leads the notes so it is never cut off.
+  const forensicsNote = imageForensics.length
+    ? `Beacon AI Image Forensics: ${imageForensics[0].riskLevel.toLowerCase()} risk — ${imageForensics[0].checks.length} indicator(s). See the alert above.`
+    : null
 
   if (!read.hasTextLayer) {
-    return { document_type: docTypeLabel || 'Unknown', fields, notes: [unreadableMessage(read.reason, read.quality)] }
+    return { document_type: docTypeLabel || 'Unknown', fields, notes: [forensicsNote, unreadableMessage(read.reason, read.quality)].filter(Boolean) }
   }
 
   // Values from a real text layer are firmer than OCR'd ones. Both stay below the
@@ -442,7 +471,7 @@ function intakeParser(input) {
     fields.affected_asset = { value: `Vehicle ${vehicle.value}`, confidence: loose, page: null, quote: vehicle.value }
   }
 
-  const notes = [`Read by Beacon from the ${read.source === 'OCR' ? 'image using our own OCR' : "PDF's text layer"}; no language model was used.`]
+  const notes = [forensicsNote, `Read by Beacon from the ${read.source === 'OCR' ? 'image using our own OCR' : "PDF's text layer"}; no language model was used.`].filter(Boolean)
   // PIN codes are left out: any six digits match, including ones inside a policy number.
   const shown = identifiers.filter((i) => i.type !== 'pincode')
   if (shown.length) notes.push(`Identifiers found: ${shown.map((i) => `${i.label} ${i.value}`).join(', ')}.`)

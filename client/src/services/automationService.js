@@ -28,4 +28,8 @@ export const automationService = {
   runAgent: (claimId, agent) => api.post(`/claims/${claimId}/agents/${agent}`).then((r) => r.data),
   applyAgentRun: (runId, body) => api.post(`/agent-runs/${runId}/apply`, body).then((r) => r.data),
   discardAgentRun: (runId, reason) => api.post(`/agent-runs/${runId}/discard`, reason ? { reason } : {}).then((r) => r.data),
+  // Beacon AI Image Forensics (local checks on image documents)
+  acceptRunImageAlert: (runId) => api.post(`/ai-runs/${runId}/image-alert/accept`).then((r) => r.data),
+  documentImageForensics: (documentId) => api.get(`/documents/${documentId}/image-forensics`).then((r) => r.data),
+  acceptDocumentImageAlert: (documentId) => api.post(`/documents/${documentId}/image-forensics/accept`).then((r) => r.data),
 }

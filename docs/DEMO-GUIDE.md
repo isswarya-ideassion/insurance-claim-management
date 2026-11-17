@@ -48,6 +48,8 @@ Password for every account: **`HarborDemo!2026`**
 | Claims Ops Manager | `ops.olivia@demo.harborpoint.test` | Coverage check, triage |
 | Ops Manager | `manager.maria@demo.harborpoint.test` | Denial letter, approvals |
 | Adjuster | `adjuster.adam@demo.harborpoint.test` | Reserve, subrogation |
+| Adjuster | `adjuster.amara@demo.harborpoint.test` | Image forensics alert on HPC-2026-000110 |
+| Document Reviewer | `reviewer.raj@demo.harborpoint.test` | Image forensics alert in Document Review |
 | Payment Operator | `payments.priya@demo.harborpoint.test` | Payee check |
 | Compliance | `compliance.carlos@demo.harborpoint.test` | Fraud score (only role that sees the number) |
 | Client | `customer.alice@demo.harborpoint.test` | Customer's own view |
@@ -107,6 +109,36 @@ This is the strongest five minutes, because it shows the human overruling the AI
 Maria's claim header has a red **Deny (not covered)** button. It looks like the obvious way to mark a claim not covered — it is not, for this purpose. It is a workflow transition (`Coverage Verification → Rejected`) and it **does not set `coverage_result`**. Use it and the claim is rejected, the denial-letter card is *still* hidden, and you have closed the claim out of intake so Olivia can no longer record coverage either.
 
 Only the coverage-check apply form in step 2 sets `coverage_result`.
+
+---
+
+## 4b. Beacon AI Image Forensics — a forged hospital bill
+
+Runs entirely on the server with `AI_PROVIDER=beacon`: no model, no API, no cost. The demo seed puts one forged image, **`hospital-bill-photo.png`**, on **HPC-2026-000104**. It is pending review in Raj's queue. A byte-identical copy, `replacement-receipt-photo.png`, sits on **HPC-2026-000110** (Amara's claim). The image trips all three checks:
+
+| Check | What Beacon reports |
+|---|---|
+| Duplicate image | Same SHA-256 as the file on the other claim — shows the matched claim number |
+| Metadata | PNG metadata names **Adobe Photoshop 25.4 (Windows)**; capture date 30 days before the loss |
+| OCR | Local OCR reads **GRAND TOTAL RS 48,500.00** against a claim of ₹9,600, and a bill date 20 days before the loss |
+
+**As `reviewer.raj` — Document Review queue → `hospital-bill-photo.png` → Review**
+
+1. The red **Beacon AI Image Forensics Alert** appears at the top of the review dialog (also in **Preview**).
+2. Click **Accept Alert & Flag Fraud**. This writes an `ai_runs` row with `human_decision = ACCEPTED` and records fraud flags (`DUPLICATE_DOCUMENT_IMAGE`, `DOCUMENT_TAMPERING`, `IMAGE_PREDATES_LOSS`, `INCONSISTENT_STATEMENTS`) for compliance to review. The banner turns to *Accepted by Raj Patel*.
+
+**As `ops.olivia` — HPC-2026-000104 → Overview → Triage → Run**
+
+3. The same alert sits at the top of the triage suggestion. The image indicators are also added to the reason codes and raise the risk score.
+4. In the **Automation** tab, **Extract fields** on the PNG shows the alert above the extracted values. Beacon reads the image with its own OCR.
+
+**As `adjuster.amara` — HPC-2026-000110 → Documents → preview `replacement-receipt-photo.png`**
+
+5. The alert names **HPC-2026-000104** as the matching claim. Adjusters and Document Reviewers can see this alert on the triage card, but never the fraud score.
+
+*Point to make:* every alert is an indicator with its evidence. A person accepts it, and the claim is never decided by it.
+
+> On a database seeded before this feature, restart the API with `SEED_DEMO_DATA=true` (or run `npm run db:seed-demo`). The image is added on its own, with no reset needed.
 
 ---
 
