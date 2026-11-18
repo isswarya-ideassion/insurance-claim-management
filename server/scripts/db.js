@@ -2,7 +2,7 @@
 /**
  * Database commands for the PostgreSQL server in DATABASE_URL.
  *
- *   npm run db:migrate      apply pending migrations from database/migrations
+ *   npm run db:migrate      apply pending migrations from server/database/migrations
  *   npm run db:status       list applied and pending migrations
  *   npm run db:seed-demo    load the fictional demo users, policies and claims
  *                           (development only; refuses NODE_ENV=production)
