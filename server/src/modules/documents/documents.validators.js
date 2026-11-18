@@ -19,7 +19,10 @@ export const reviewSchema = z
     decision: z.enum(['ACCEPT', 'REJECT']),
     comment: z.string().trim().max(2000).optional().nullable(),
     rejectionReason: z.string().trim().max(1000).optional().nullable(),
+    // Set by the one-click "Reject Document" on a Beacon unrelated-document notice.
+    beaconFlag: z.enum(['IRRELEVANT_DOCUMENT']).optional().nullable(),
   })
+  .refine((v) => !v.beaconFlag || v.decision === 'REJECT', { message: 'A Beacon flag only accompanies a rejection', path: ['beaconFlag'] })
   .refine((v) => v.decision !== 'REJECT' || (v.rejectionReason && v.rejectionReason.length >= 5), {
     message: 'A rejection reason of at least 5 characters is required',
     path: ['rejectionReason'],

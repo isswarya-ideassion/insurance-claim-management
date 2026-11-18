@@ -31,7 +31,7 @@ import { assignClaim } from '../assignments/assignments.service.js'
 import { SEVERITY_FACTOR } from '../compliance/compliance.service.js'
 import { AI_DISCLAIMER, PROMPT_VERSIONS, agentActor, logRun, presentRun, runAi, sha256 } from './ai-automation.service.js'
 import { imageAlertsForRun } from './image-alerts.service.js'
-import { imageFraudAlertsSchema } from '../../services/intelligence/imageForensics.service.js'
+import { fraudChecksOf, imageFraudAlertsSchema, isFraudAlert } from '../../services/intelligence/imageForensics.service.js'
 
 /*
  * Claim agents (PRD section 3). Each agent reads minimized claim facts, returns
@@ -270,10 +270,11 @@ const triageAgent = {
         fraud_reason_taxonomy: codes.map((c) => ({ code: c.code, description: c.description })),
         candidate_adjusters: aliases.map((a) => ({ alias: a.alias, open_claims: a.open_claims, high_priority_open: a.high_priority_open, claims_handled_by_type: a.experience })),
         // Minimised: check types and severities only — no file names, hashes or other claims' numbers.
-        image_forensics: imageFraudAlerts.map((a) => ({
+        // Fraud alerts only: an unrelated upload is shown to the reviewer, not scored.
+        image_forensics: imageFraudAlerts.filter(isFraudAlert).map((a) => ({
           risk_level: a.riskLevel,
           confidence: a.confidence,
-          checks: a.checks.map((c) => ({ check: c.check, code: c.code, severity: c.severity })),
+          checks: fraudChecksOf(a).map((c) => ({ check: c.check, code: c.code, severity: c.severity })),
         })),
       },
       validate(raw) {

@@ -23,7 +23,9 @@ import { profileMap, nameOf } from '../../services/presenters.js'
 import { logger } from '../../config/logger.js'
 import { computeDocumentChecklist } from './reminders.service.js'
 import { imageAlertsForRun } from './image-alerts.service.js'
-import { imageFraudAlertsSchema, isImageMime } from '../../services/intelligence/imageForensics.service.js'
+import { IMAGE_FORENSICS_AGENT, imageFraudAlertsSchema, isImageMime } from '../../services/intelligence/imageForensics.service.js'
+import { IRRELEVANT_EVIDENCE, IRRELEVANT_TITLE, RELEVANCE, assessRelevance } from '../../services/intelligence/documentRelevance.js'
+import { readFileText } from '../../services/intelligence/documentIntelligence.service.js'
 
 export const AI_DISCLAIMER =
   'AI-generated suggestions can be wrong. They support your work and never approve, reject, settle or make fraud determinations on a claim.'
@@ -50,7 +52,7 @@ export function getAiStatus(ctx) {
   return aiStatus(ctx.ai)
 }
 
-async function loadAutomationClaim(t, ctx, claimId) {
+export async function loadAutomationClaim(t, ctx, claimId) {
   const claim = await loadAccessibleClaim(t, ctx.actor, claimId)
   requireTab(ctx.actor, claim, 'automation')
   return claim
@@ -263,12 +265,40 @@ function buildExtractionResult(output, { claim, policy, document }, now) {
   }
 }
 
+/**
+ * The relevance verdict stored on an extraction run. An image's comes from the
+ * forensics scan (which already read it); any other file's from its own text.
+ * Never throws: a file that cannot be judged gets null.
+ */
+function documentRelevanceFor(document, buffer, claim, policy, imageAlerts) {
+  try {
+    if (isImageMime(document.mime_type)) {
+      const own = imageAlerts.find((a) => a.documentId === document.id)
+      if (own?.relevance !== RELEVANCE.IRRELEVANT) return null
+      return { status: RELEVANCE.IRRELEVANT, title: IRRELEVANT_TITLE, evidence: IRRELEVANT_EVIDENCE, detail: own.relevanceDetail ?? null, signals: [] }
+    }
+    const r = assessRelevance({ read: readFileText(buffer, document.mime_type), docType: document.doc_type, claim, policy })
+    return { status: r.status, title: r.title, evidence: r.evidence, detail: r.detail, signals: r.signals }
+  } catch {
+    return null
+  }
+}
+
 export async function runExtraction(ctx, documentId) {
   requirePermission(ctx.actor, 'automation.extract')
   const document = await ctx.db.findById('documents', documentId)
   if (!document) throw notFound('Document not found')
   const claim = await loadAutomationClaim(ctx.db, ctx, document.claim_id)
   requireNotOwnClaim(ctx.actor, claim)
+  return extractDocument(ctx, document, claim, { trigger: 'MANUAL' })
+}
+
+/**
+ * Reads one document and records the run. Callers do the access checks:
+ * runExtraction for a person's click, auto-extraction.service for the
+ * automatic scan after upload or on first view. `trigger` is audited.
+ */
+export async function extractDocument(ctx, document, claim, { trigger }) {
   if (!ctx.ai.configured) throw aiNotConfigured()
 
   const policy = claim.policy_id ? await ctx.db.findById('policies', claim.policy_id) : null
@@ -288,6 +318,8 @@ export async function runExtraction(ctx, documentId) {
   const imageFraudAlerts = isImageMime(document.mime_type)
     ? await imageAlertsForRun(ctx.db, claim, { documentId: document.id, requestId: ctx.actor.requestId })
     : []
+  // Claim relevance, also local and provider-independent: is this file claim evidence at all?
+  const relevance = documentRelevanceFor(document, buffer, claim, policy, imageFraudAlerts)
   const { base, result } = await runAi(ctx, {
     agent,
     claimId: claim.id,
@@ -310,7 +342,7 @@ export async function runExtraction(ctx, documentId) {
     validate: (raw) => {
       const parsed = extractionOutput.safeParse(raw)
       if (!parsed.success) throw aiError(502, 'AI_INVALID_OUTPUT', 'The AI response did not match the expected structure, so it was not used.', true)
-      return { ...buildExtractionResult(parsed.data, { claim, policy, document }, now), imageFraudAlerts: imageFraudAlertsSchema.parse(imageFraudAlerts) }
+      return { ...buildExtractionResult(parsed.data, { claim, policy, document }, now), imageFraudAlerts: imageFraudAlertsSchema.parse(imageFraudAlerts), relevance }
     },
   })
 
@@ -334,10 +366,12 @@ export async function runExtraction(ctx, documentId) {
       claimId: claim.id,
       metadata: {
         requestedBy: ctx.actor.id,
+        trigger,
         documentId: document.id,
         promptVersion: run.prompt_version,
         applicableFields: result.fields.filter((f) => f.applicable).map((f) => f.key),
         imageFraudAlerts: result.imageFraudAlerts.map((a) => a.riskLevel),
+        relevance: result.relevance?.status ?? null,
       },
     })
     logRun(ctx, run)
@@ -379,7 +413,13 @@ export function presentRun(run, names) {
 export async function listExtractions(ctx, claimId) {
   requirePermission(ctx.actor, 'automation.view')
   await loadAutomationClaim(ctx.db, ctx, claimId)
-  const runs = await ctx.db.findMany('ai_runs', { where: { claim_id: claimId, agent: AI_AGENTS.INTAKE_PARSER }, orderBy: [['created_at', 'desc']], limit: 50 })
+  // Image-forensics runs are included so an alert accepted from the Document
+  // Review dialog stays pinned on that document's extraction section.
+  const runs = await ctx.db.findMany('ai_runs', {
+    where: { claim_id: claimId, agent: { in: [AI_AGENTS.INTAKE_PARSER, IMAGE_FORENSICS_AGENT] } },
+    orderBy: [['created_at', 'desc']],
+    limit: 100,
+  })
   const names = await profileMap(ctx.db, runs.flatMap((r) => [r.requested_by, r.decided_by]))
   return runs.map((r) => presentRun(r, names))
 }

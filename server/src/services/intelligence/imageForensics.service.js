@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { z } from 'zod'
 import { readFileText } from './documentIntelligence.service.js'
 import { extractAmount, parseIndianDate } from './indianFields.js'
+import { IRRELEVANT_EVIDENCE, IRRELEVANT_TITLE, RELEVANCE, RELEVANCE_STATUSES, assessRelevance } from './documentRelevance.js'
 
 /**
  * Beacon image forensics — zero-cost, fully local checks on claim photos and
@@ -43,6 +44,8 @@ const MAX_IMAGES_PER_CLAIM = 12
  * about fraud, so they are not reported as duplicates.
  */
 export const MIN_DUPLICATE_BYTES = 2048
+/** Below this an image is a blank placeholder and is not judged for relevance either. */
+const MIN_RELEVANCE_BYTES = 512
 
 export const CHECK_TYPES = [
   'DUPLICATE_IMAGE',
@@ -52,8 +55,17 @@ export const CHECK_TYPES = [
   'CAPTURED_BEFORE_LOSS',
   'AMOUNT_MISMATCH',
   'BILL_DATE_BEFORE_LOSS',
+  // Not a fraud indicator: the file is not claim evidence at all (see documentRelevance.js).
+  'IRRELEVANT_DOCUMENT',
 ]
+/** Checks that are reported to the reviewer but never recorded as fraud flags or scored by triage. */
+export const NON_FRAUD_CHECKS = ['IRRELEVANT_DOCUMENT']
 const RISK_LEVELS = ['LOW', 'MEDIUM', 'HIGH']
+
+/** An alert that is about possible fraud, as opposed to an unrelated upload. Old stored alerts have no relevance field. */
+export const isFraudAlert = (alert) => alert?.relevance !== RELEVANCE.IRRELEVANT
+/** The fraud-indicator checks of an alert (an irrelevant-document check is not one). */
+export const fraudChecksOf = (alert) => (isFraudAlert(alert) ? (alert.checks ?? []).filter((c) => !NON_FRAUD_CHECKS.includes(c.check)) : [])
 
 /**
  * Fraud reason codes per check, most specific first. The specific codes come
@@ -68,6 +80,8 @@ export const CHECK_REASON_CODES = {
   CAPTURED_BEFORE_LOSS: ['IMAGE_PREDATES_LOSS', 'INCONSISTENT_STATEMENTS'],
   AMOUNT_MISMATCH: ['INCONSISTENT_STATEMENTS'],
   BILL_DATE_BEFORE_LOSS: ['INCONSISTENT_STATEMENTS'],
+  // Shown as a code for the record; NON_FRAUD_CHECKS keeps it out of fraud flags and scoring.
+  IRRELEVANT_DOCUMENT: ['IRRELEVANT_DOCUMENT'],
 }
 
 // ---------------------------------------------------------------------------
@@ -80,6 +94,7 @@ export const imageFraudCheckSchema = z.object({
   confidence: z.number().min(0).max(1),
   evidence: z.string().min(1).max(600),
   matchedClaimNumber: z.string().max(60).nullable(),
+  title: z.string().max(120).nullable().optional(),
 })
 
 export const imageFraudAlertSchema = z.object({
@@ -90,6 +105,9 @@ export const imageFraudAlertSchema = z.object({
   sha256: z.string().regex(/^[0-9a-f]{64}$/),
   riskLevel: z.enum(RISK_LEVELS),
   confidence: z.number().min(0).max(1),
+  // Alerts stored before the relevance check have no field; they were all fraud alerts.
+  relevance: z.enum(RELEVANCE_STATUSES).default(RELEVANCE.RELEVANT),
+  relevanceDetail: z.string().max(300).nullable().optional(),
   matchedClaimNumber: z.string().max(60).nullable(),
   matchedClaims: z
     .array(z.object({ claimNumber: z.string().max(60).nullable(), documentId: z.string().uuid(), fileName: z.string().max(300) }))
@@ -160,7 +178,9 @@ const AI_SIGNATURES = [
   { re: /ComfyUI/, label: 'ComfyUI' },
 ]
 
-const EXIF_DATE = /\b((?:19|20)\d{2}):(0[1-9]|1[0-2]):(0[1-9]|[12]\d|3[01]) ([01]\d|2[0-3]):([0-5]\d):([0-5]\d)\b/g
+// Digit lookarounds, not \b: in a PNG text chunk the date is followed directly
+// by the chunk CRC, whose first byte is often a letter or digit.
+const EXIF_DATE = /(?<!\d)((?:19|20)\d{2}):(0[1-9]|1[0-2]):(0[1-9]|[12]\d|3[01]) ([01]\d|2[0-3]):([0-5]\d):([0-5]\d)(?!\d)/g
 const XMP_DATE = /(xmp:CreateDate|xmp:ModifyDate|exif:DateTimeOriginal|photoshop:DateCreated)(?:\s*=\s*"|>)((?:19|20)\d{2}-\d{2}-\d{2}(?:T[\d:.]+(?:Z|[+-]\d{2}:\d{2})?)?)/g
 
 function parseExifDate(m) {
@@ -210,15 +230,23 @@ function billDateFromText(text) {
 
 /** OCR the image and compare its total and date with the claim. */
 export function inspectText(buffer, mimeType, claim) {
+  // `text` is what OCR read (already Aadhaar-masked). It feeds the relevance
+  // check and is never stored in the alert.
+  const unread = (note, reason) => ({ read: false, amount: null, billDate: null, note, findings: [], text: '', textRead: { text: '', hasTextLayer: false, reason } })
   if (!OCR_MIME_TYPES.includes(mimeType)) {
-    return { read: false, amount: null, billDate: null, note: 'WebP cannot be decoded locally, so the printed text was not read. Metadata and duplicate checks still ran.', findings: [] }
+    return unread('WebP cannot be decoded locally, so the printed text was not read. Metadata and duplicate checks still ran.', 'UNSUPPORTED_FORMAT')
   }
   if (buffer.length > OCR_MAX_BYTES) {
-    return { read: false, amount: null, billDate: null, note: 'Image is too large to read locally; the printed text was not checked.', findings: [] }
+    return unread('Image is too large to read locally; the printed text was not checked.', 'TOO_LARGE')
   }
-  const read = readFileText(buffer, mimeType)
+  let read
+  try {
+    read = readFileText(buffer, mimeType)
+  } catch {
+    return unread('The image could not be read; the printed text was not checked.', 'READ_FAILED')
+  }
   if (!read.hasTextLayer) {
-    return { read: false, amount: null, billDate: null, note: 'No legible printed text was found (a photograph rather than a bill, or too blurry).', findings: [] }
+    return { ...unread('No legible printed text was found (a photograph rather than a bill, or too blurry).', read.reason), textRead: read }
   }
   const ocrConfidence = Math.min(1, Math.max(0, read.ocrConfidence ?? 0.6))
   const amount = extractAmount(read.text)
@@ -246,7 +274,7 @@ export function inspectText(buffer, mimeType, claim) {
       evidence: `The bill is dated ${bill.value} ("${bill.evidence}"), ${days} day(s) before the date of loss ${isoDay(claim.loss_date)}.`,
     })
   }
-  return { read: true, amount: amount?.value ?? null, billDate: bill?.value ?? null, note: null, findings }
+  return { read: true, amount: amount?.value ?? null, billDate: bill?.value ?? null, note: null, findings, textRead: read }
 }
 
 /** Overall confidence: the chance that at least one independent signal is right. */
@@ -263,10 +291,18 @@ function riskLevelFor(checks) {
 }
 
 /**
- * Runs all three checks on one image. Pure apart from the duplicate list,
- * which the caller supplies. Returns `null` when nothing was found.
+ * Runs all three checks on one image, then the claim-relevance check. Pure
+ * apart from the duplicate list, which the caller supplies. Returns `null`
+ * when nothing was found. Never throws on a malformed or unusual file: each
+ * stage that reads the bytes falls back to "not checked".
+ *
+ * A file judged IRRELEVANT (no claim evidence in it at all) gets a single
+ * IRRELEVANT_DOCUMENT alert instead of fraud indicators: a generic picture
+ * that also sits on another claim is not a duplicate-evidence scheme, and the
+ * right action is to reject it, not to flag fraud. Any metadata indicators are
+ * listed in its evidence for the record.
  */
-export function scanImage({ buffer, document, claim, duplicates = [], now = new Date() }) {
+export function scanImage({ buffer, document, claim, policy = null, duplicates = [], now = new Date() }) {
   const sha = sha256Hex(buffer)
   const checks = []
   const lossDay = claim.loss_date ? dayStart(claim.loss_date) : null
@@ -284,7 +320,12 @@ export function scanImage({ buffer, document, claim, duplicates = [], now = new 
   }
 
   // Check 2 — editing software, generative AI, edit history, capture date.
-  const meta = inspectMetadata(buffer)
+  let meta
+  try {
+    meta = inspectMetadata(buffer)
+  } catch {
+    meta = { editors: [], editorDetail: null, aiMarkers: [], earliestCaptureDate: null, modifiedAfterCapture: false, editHistory: false }
+  }
   if (meta.aiMarkers.length) {
     checks.push({ check: 'AI_GENERATED', severity: 'HIGH', confidence: 0.9, evidence: `The file carries a generative-AI marker: ${meta.aiMarkers.join(', ')}.`, matchedClaimNumber: null })
   }
@@ -320,8 +361,53 @@ export function scanImage({ buffer, document, claim, duplicates = [], now = new 
   }
 
   // Check 3 — OCR total and date against the claim.
-  const ocr = inspectText(buffer, document.mime_type, claim)
+  let ocr
+  try {
+    ocr = inspectText(buffer, document.mime_type, claim)
+  } catch {
+    ocr = { read: false, amount: null, billDate: null, note: 'The image could not be read; the printed text was not checked.', findings: [], textRead: { text: '', hasTextLayer: false, reason: 'READ_FAILED' } }
+  }
   for (const f of ocr.findings) checks.push({ ...f, matchedClaimNumber: null })
+
+  // Relevance — is this claim evidence at all? A few-hundred-byte placeholder is not judged
+  // (a small text image compresses to well under the duplicate floor, so that floor is too high here).
+  const relevance =
+    buffer.length >= MIN_RELEVANCE_BYTES
+      ? assessRelevance({ read: ocr.textRead, docType: document.doc_type, claim, policy })
+      : { status: RELEVANCE.UNKNOWN }
+  if (relevance.status === RELEVANCE.IRRELEVANT) {
+    // The duplicate match is dropped outright (the point of this check); other
+    // indicators stay visible as notes but are not fraud indicators here.
+    const noted = checks.filter((c) => c.check !== 'DUPLICATE_IMAGE').map((c) => `Also noted, not raised as fraud: ${c.evidence}`)
+    const irrelevant = {
+      check: 'IRRELEVANT_DOCUMENT',
+      code: CHECK_REASON_CODES.IRRELEVANT_DOCUMENT[0],
+      title: IRRELEVANT_TITLE,
+      severity: 'MEDIUM',
+      // Firmer when Beacon read text and none of it was about a claim than when there was no legible text.
+      confidence: ocr.textRead?.hasTextLayer ? 0.8 : 0.6,
+      evidence: IRRELEVANT_EVIDENCE,
+      matchedClaimNumber: null,
+    }
+    return imageFraudAlertSchema.parse({
+      documentId: document.id,
+      fileName: document.file_name,
+      docType: document.doc_type ?? null,
+      mimeType: document.mime_type,
+      sha256: sha,
+      riskLevel: 'MEDIUM',
+      confidence: irrelevant.confidence,
+      relevance: RELEVANCE.IRRELEVANT,
+      relevanceDetail: relevance.detail,
+      matchedClaimNumber: null,
+      matchedClaims: [],
+      evidence: [IRRELEVANT_EVIDENCE, relevance.detail, ...noted].filter(Boolean).slice(0, 20),
+      checks: [irrelevant],
+      ocr: { read: ocr.read, amount: ocr.amount, billDate: ocr.billDate, note: ocr.note },
+      engine: IMAGE_FORENSICS_ENGINE,
+      scannedAt: now.toISOString(),
+    })
+  }
 
   if (!checks.length) return null
   const withCodes = checks.map((c) => ({ ...c, code: CHECK_REASON_CODES[c.check][0] }))
@@ -333,6 +419,8 @@ export function scanImage({ buffer, document, claim, duplicates = [], now = new 
     sha256: sha,
     riskLevel: riskLevelFor(withCodes),
     confidence: combine(withCodes),
+    relevance: relevance.status,
+    relevanceDetail: null,
     matchedClaimNumber: checks.some((c) => c.check === 'DUPLICATE_IMAGE') ? duplicates[0]?.claimNumber ?? null : null,
     matchedClaims: checks.some((c) => c.check === 'DUPLICATE_IMAGE') ? duplicates.slice(0, 10) : [],
     evidence: withCodes.map((c) => c.evidence),
@@ -383,24 +471,38 @@ async function loadImageRows(db, claimId, documentId) {
  */
 export async function scanClaimImages(db, claim, { documentId = null, now = new Date() } = {}) {
   const rows = await loadImageRows(db, claim.id, documentId)
+  if (!rows.length) return []
+  // The policy supplies the insured name and policy number for the relevance check.
+  let policy = null
+  try {
+    policy = claim.policy_id ? await db.findById('policies', claim.policy_id) : null
+  } catch {
+    policy = null
+  }
   const alerts = []
   for (const row of rows) {
     try {
       const buffer = Buffer.from(row.content)
       const duplicates = buffer.length >= MIN_DUPLICATE_BYTES ? await findDuplicateImages(db, sha256Hex(buffer), claim.id) : []
-      const alert = scanImage({ buffer, document: row, claim, duplicates, now })
+      const alert = scanImage({ buffer, document: row, claim, policy, duplicates, now })
       if (alert) alerts.push(alert)
     } catch {
       // A malformed file yields no alert rather than failing the whole scan.
     }
   }
+  // Fraud alerts first (by risk), unrelated-document notices after them.
   const order = { HIGH: 0, MEDIUM: 1, LOW: 2 }
-  return alerts.sort((a, b) => order[a.riskLevel] - order[b.riskLevel] || b.confidence - a.confidence)
+  return alerts.sort((a, b) => isFraudAlert(b) - isFraudAlert(a) || order[a.riskLevel] - order[b.riskLevel] || b.confidence - a.confidence)
 }
 
 /** One-line headline for notes and audit metadata. */
 export function describeAlerts(alerts) {
   if (!alerts?.length) return null
-  const high = alerts.filter((a) => a.riskLevel === 'HIGH').length
-  return `Beacon image forensics: ${alerts.length} image(s) with fraud indicators${high ? `, ${high} high risk` : ''}. Review before relying on these documents.`
+  const fraud = alerts.filter(isFraudAlert)
+  const unrelated = alerts.length - fraud.length
+  const high = fraud.filter((a) => a.riskLevel === 'HIGH').length
+  const parts = []
+  if (fraud.length) parts.push(`${fraud.length} image(s) with fraud indicators${high ? `, ${high} high risk` : ''}`)
+  if (unrelated) parts.push(`${unrelated} image(s) that look unrelated to the claim`)
+  return `Beacon image forensics: ${parts.join('; ')}. Review before relying on these documents.`
 }

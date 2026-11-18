@@ -18,6 +18,8 @@ export const automationService = {
   discardReminder: (id) => api.post(`/automation/reminders/${id}/discard`).then((r) => r.data),
   runReminderSweep: () => api.post('/automation/reminders/sweep').then((r) => r.data),
   extract: (documentId) => api.post(`/documents/${documentId}/extractions`).then((r) => r.data),
+  // Scans the document's current version if it has no run yet, then returns the latest run.
+  ensureExtraction: (documentId) => api.post(`/documents/${documentId}/extractions/ensure`).then((r) => r.data),
   extractions: (claimId) => api.get(`/claims/${claimId}/automation/extractions`).then((r) => r.data),
   applyExtraction: (runId, fields) => api.post(`/automation/extractions/${runId}/apply`, { fields }).then((r) => r.data),
   discardExtraction: (runId) => api.post(`/automation/extractions/${runId}/discard`).then((r) => r.data),

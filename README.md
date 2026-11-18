@@ -19,7 +19,7 @@ cp server/.env.example server/.env   # set DATABASE_URL and AUTH_TOKEN_SECRET; S
 npm run dev                          # migrates the database, then API on :4000 and web app on :5173
 ```
 
-Open http://localhost:5173 and sign in with any demo account (password `HarborDemo!2026`). With demo data the login page has one-click buttons for each role and a yellow **DEMO DATA** banner is shown.
+Open http://localhost:5173 and sign in with any demo account (password `HarborDemo!2026`). With demo data the login page has a **Quick role switch** list that signs in as any role in one step.
 
 | Role | Email |
 |---|---|
@@ -34,7 +34,62 @@ Open http://localhost:5173 and sign in with any demo account (password `HarborDe
 
 To reset the demo, drop and recreate the database; the next start migrates and seeds it again.
 
-For real data set `FIELD_ENCRYPTION_KEY` (32 random bytes, base64) and keep `SEED_DEMO_DATA=false`; see [docs/SETUP.md](docs/SETUP.md). An existing Supabase project moves over with `npm run db:import-supabase` (users keep their passwords; documents are copied into the database).
+For real data set `FIELD_ENCRYPTION_KEY` (32 random bytes, base64) and keep `SEED_DEMO_DATA=false` (see [Configuration](#configuration)). An existing Supabase project moves over with `npm run db:import-supabase` (users keep their passwords; documents are copied into the database).
+
+## Configuration
+
+All settings live in `server/.env` (start from `server/.env.example`). The server validates them on start and refuses to run without `DATABASE_URL` and `AUTH_TOKEN_SECRET`, or without `FIELD_ENCRYPTION_KEY` outside demo and test databases.
+
+| Variable | Purpose |
+|---|---|
+| `DATABASE_URL` | **Required.** `postgresql://harborpoint:<password>@localhost:5432/harborpoint` |
+| `DATABASE_SSL` | `disable` (local), `require`, or `verify-full` (use for managed databases) |
+| `AUTH_TOKEN_SECRET` | **Required.** At least 32 random characters; signs session tokens |
+| `FIELD_ENCRYPTION_KEY` | **Required for real data.** 32 random bytes (base64 or 64 hex) for AES-256-GCM encryption of bank details and claimant contacts. Losing it makes those fields unreadable |
+| `SEED_DEMO_DATA` | `true` creates fictional demo users, policies and claims on start (refused with `NODE_ENV=production`) |
+| `DB_MIGRATE_ON_START` | Apply pending migrations at start (default `true`; set `false` when a pipeline migrates) |
+| `AI_PROVIDER` | `beacon` (built-in rules, no network call), `anthropic`, `ollama` or `none` |
+| `CLIENT_ORIGIN` | Allowed browser origin(s), comma-separated |
+| `MAX_UPLOAD_MB` | Largest upload, 1–10 MB (default 10; 4 on Vercel) |
+
+Generate secrets with `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`. The web app needs no configuration: `client/.env` only has `VITE_API_URL` (default `/api`, proxied by Vite to port 4000).
+
+## Database and migrations
+
+```bash
+npm run db:migrate      # apply server/database/migrations in order (also done automatically at API start)
+npm run db:status       # list applied and pending migrations
+npm run db:seed-demo    # optional, development only: demo users, policies and claims
+```
+
+Migrations are plain SQL files in `server/database/migrations/`, applied in filename order, each in its own transaction, and recorded in `app_meta.schema_migrations`; an advisory lock lets several API instances start together. `server/database/seed.sql` (the reference roles) is re-applied after them and is idempotent. If you change `shared/workflow.js`, regenerate the transition migration with `npm run db:transitions-sql` and ship it as a new migration.
+
+Self-registration creates a `CLIENT` account. Staff accounts are created by Compliance & Security under **Users & roles → Create user**. On an empty non-production database, `npm run db:seed-demo` provides the first Compliance & Security user.
+
+## Tests and checks
+
+The server tests need a PostgreSQL server where the test user may create databases (a local superuser is simplest). One template database is migrated and seeded per run, and each test file gets its own clone.
+
+```bash
+TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/postgres npm test
+npm run lint      # syntax and import-resolution checks
+npm run build     # production web build
+```
+
+## Deploying to Vercel
+
+`vercel.json` builds the web app to `client/dist` and serves the API from `api/index.js` as one function. On Vercel, migrations never run on a request, scheduled jobs run through Vercel Cron (`/api/internal/cron/jobs`), uploads are capped at 4 MB and each instance keeps a pool of 3 connections; `api/index.js` applies these defaults.
+
+1. Create a PostgreSQL database (for example Neon, in the region closest to `"regions"` in `vercel.json`).
+2. From your machine, with the database's **direct** (unpooled) connection string: `DATABASE_URL=<url> DATABASE_SSL=require npm run db:migrate` (and `npm run db:seed-demo` for a demo). Repeat `db:migrate` before deploying any release that adds a migration.
+3. In Vercel → Settings → Environment Variables set `NODE_ENV=production`, `DATABASE_URL` (pooled string), `DATABASE_SSL=require`, `AUTH_TOKEN_SECRET`, `FIELD_ENCRYPTION_KEY` (the **same** key used when seeding), `CLIENT_ORIGIN`, `CRON_SECRET` and `AI_PROVIDER=beacon`. Never commit them.
+4. Deploy, then open `/api/health` and check `"database"` and `"aiConfigured"`.
+
+## Production notes
+
+- Run with `NODE_ENV=production`, `SEED_DEMO_DATA=false`, `DATABASE_SSL=verify-full` for a remote database, and secrets from a secrets manager.
+- Back up with point-in-time recovery or `pg_dump`; backups include the claim documents (`public.document_files`). Store the encryption key separately from the backups.
+- Add a real email provider by implementing `send()` in `server/src/services/email.service.js`, and a real payment provider by implementing `initiateTransfer()` in place of the simulated adapter.
 
 ## AI automation
 
@@ -59,7 +114,7 @@ Without a provider (`AI_PROVIDER=none`, the default) the app shows these setup i
 | `npm start` | Start the API without file watching |
 | `npm test` | Server (unit, integration, RLS, end-to-end; needs `TEST_DATABASE_URL`) and client tests |
 | `npm run lint` | Syntax + import-resolution checks for both workspaces |
-| `npm run db:migrate` / `npm run db:status` | Apply / list database migrations (`database/migrations`) |
+| `npm run db:migrate` / `npm run db:status` | Apply / list database migrations (`server/database/migrations`) |
 | `npm run db:seed-demo` | Load the fictional demo data into a **development** database |
 | `npm run db:import-supabase` | One-time copy of a Supabase project into an empty PostgreSQL database |
 | `npm run db:transitions-sql` | Regenerate the workflow-transition migration from `shared/workflow.js` |
@@ -67,14 +122,15 @@ Without a provider (`AI_PROVIDER=none`, the default) the app shows these setup i
 ## Project layout
 
 ```text
-client/            React app (pages per role, shared components, services, hooks, schemas)
-server/            Express API (modules: auth, policies, claims, documents, assignments, tasks,
+client/            Frontend: React app (pages per role, shared components, services, hooks, schemas)
+server/            Backend: Express API (modules: auth, policies, claims, documents, assignments, tasks,
                    evaluations, reserves, settlements, compliance, payments, closure, config,
                    integrations, customers, automation, notifications, reports, audit, admin),
-                   db layer, services (workflow, SLA, authority, crypto, config), seed data, tests
+                   db layer, services (workflow, SLA, authority, crypto, config, Beacon intelligence),
+                   seed data, tests
+  database/        SQL migrations and reference seed
 shared/            Business rules used by both sides: roles, statuses, workflow transitions, permissions
-database/          SQL migrations and reference seed
-docs/              PRD, API, database and setup guides
+api/               Vercel Function entry that serves the Express API
 ```
 
 ## Security model in brief
@@ -88,14 +144,3 @@ docs/              PRD, API, database and setup guides
 - Demo data is refused with `NODE_ENV=production`.
 - Customer records are visible to Compliance & Security only, enforced by API permissions and RLS; every view, export and download is audited.
 - AI keys live only in `server/.env`. AI output is validated, labeled and never applied without human confirmation; AI cannot approve, reject or settle claims.
-
-## Documentation
-
-- [docs/PRD.md](docs/PRD.md) — product requirements, roles, workflow (as built)
-- [docs/PRD-enterprise-hub.md](docs/PRD-enterprise-hub.md) — Enterprise Claims Operations Hub PRD v1.3 (roles, routing to the Claims Operations Manager, implemented schema), with implementation status
-- [docs/WALKTHROUGH.md](docs/WALKTHROUGH.md) — end-to-end code walkthrough: structure, modules, database, AI, security, API flows, run and test
-- [docs/API.md](docs/API.md) — endpoints with request/response examples
-- [docs/DATABASE.md](docs/DATABASE.md) — tables, relationships, constraints, RLS
-- [docs/DEPLOY-VERCEL.md](docs/DEPLOY-VERCEL.md) — deploying to Vercel with Neon and a hosted Ollama
-- [docs/DATABASE-REFERENCE.md](docs/DATABASE-REFERENCE.md) — every table: columns, keys, joins, usage by module, sample queries, ERD and workflow
-- [docs/SETUP.md](docs/SETUP.md) — PostgreSQL setup, configuration, migrations, Supabase import, tests, demo accounts, UAT script

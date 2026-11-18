@@ -24,7 +24,7 @@ async function main() {
           '  │  DEMO DATA — fictional users, policies and claims; SIMULATED     │',
           '  │  payments. Never point SEED_DEMO_DATA=true at real data.         │',
           '  └──────────────────────────────────────────────────────────────────┘',
-          `  Demo accounts: <role>.<name>@${DEMO_DOMAIN}  (see docs/SETUP.md)`,
+          `  Demo accounts: <role>.<name>@${DEMO_DOMAIN}  (see README.md → Quick start)`,
           '',
         ].join('\n'),
       )

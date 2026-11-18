@@ -147,7 +147,11 @@ function triage(input) {
 
   // Beacon AI Image Forensics, computed locally from the claim's images. One
   // reason per code, at the most severe band any image produced for it.
-  const imageChecks = (input.image_forensics ?? []).flatMap((a) => a.checks ?? [])
+  // An unrelated upload (relevance IRRELEVANT) is not a fraud indicator.
+  const imageChecks = (input.image_forensics ?? [])
+    .filter((a) => a.relevance !== 'IRRELEVANT')
+    .flatMap((a) => a.checks ?? [])
+    .filter((c) => c.check !== 'IRRELEVANT_DOCUMENT')
   const IMAGE_EXPLANATIONS = {
     DUPLICATE_IMAGE: 'The same image file is filed on another claim.',
     EDITING_SOFTWARE: 'Image metadata names editing software.',
@@ -436,14 +440,22 @@ const EXTRACT_KEYS = EXTRACTABLE_CLAIM_FIELDS.map((f) => f.key)
 
 function intakeParser(input) {
   const { data, mimeType, docTypeLabel, claimType, imageForensics = [] } = input
-  const read = data ? readFileText(Buffer.from(data, 'base64'), mimeType) : { text: '', hasTextLayer: false, reason: null }
+  let read
+  try {
+    read = data ? readFileText(Buffer.from(data, 'base64'), mimeType) : { text: '', hasTextLayer: false, reason: null }
+  } catch {
+    read = { text: '', hasTextLayer: false, reason: 'READ_FAILED' }
+  }
   const empty = () => ({ value: null, confidence: 0, page: null, quote: null })
   const fields = Object.fromEntries(EXTRACT_KEYS.map((k) => [k, empty()]))
   // Images are read like any other document; the forensics result (computed
   // locally by the caller) leads the notes so it is never cut off.
-  const forensicsNote = imageForensics.length
-    ? `Beacon AI Image Forensics: ${imageForensics[0].riskLevel.toLowerCase()} risk — ${imageForensics[0].checks.length} indicator(s). See the alert above.`
-    : null
+  const top = imageForensics[0]
+  const forensicsNote = !top
+    ? null
+    : top.relevance === 'IRRELEVANT'
+      ? 'Beacon: this file shows no invoice, medical, repair or policy details for this claim — it looks unnecessary. See the notice above.'
+      : `Beacon AI Image Forensics: ${top.riskLevel.toLowerCase()} risk — ${top.checks.length} indicator(s). See the alert above.`
 
   if (!read.hasTextLayer) {
     return { document_type: docTypeLabel || 'Unknown', fields, notes: [forensicsNote, unreadableMessage(read.reason, read.quality)].filter(Boolean) }

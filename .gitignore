@@ -11,3 +11,6 @@ coverage/
 server/.data/
 supabase/.temp/
 supabase/.branches/
+
+# Internal documentation (kept locally, not in the repository)
+docs/
