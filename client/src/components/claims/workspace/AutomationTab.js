@@ -312,6 +312,9 @@ function ExtractionReview({ run, claim, imageAlertPinned = false, documentStatus
   const pending = run.review_status === 'PENDING_REVIEW'
   const editable = EXTRACTION_EDITABLE_STATUSES.includes(claim.status)
   const canApply = can('automation.applyExtraction') && pending && editable
+  // A run that read no value at all collapses its comparison table to one line.
+  const hasValues = fields.some((f) => f.value !== null && f.value !== undefined && f.value !== '')
+  const [showTable, setShowTable] = useState(false)
 
   const toggle = (key) => setSelected((s) => (s.includes(key) ? s.filter((k) => k !== key) : [...s, key]))
 
@@ -346,6 +349,15 @@ function ExtractionReview({ run, claim, imageAlertPinned = false, documentStatus
           onRejected={onRejected}
         />
       )}
+      {!hasValues && (
+        <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm">
+          <span className="text-muted-foreground">No structured fields extracted from document</span>
+          <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" aria-expanded={showTable} onClick={() => setShowTable((v) => !v)}>
+            {showTable ? <ChevronUp /> : <ChevronDown />} {showTable ? 'Hide claim fields' : 'Show claim fields'}
+          </Button>
+        </div>
+      )}
+      {(hasValues || showTable) && (
       <div className="overflow-x-auto">
         <Table>
           <TableHeader>
@@ -397,6 +409,7 @@ function ExtractionReview({ run, claim, imageAlertPinned = false, documentStatus
           </TableBody>
         </Table>
       </div>
+      )}
       {run.result?.notes?.length > 0 && (
         <div className="border-t px-3 py-2 text-xs text-muted-foreground">
           <p className="font-medium text-foreground">AI notes</p>
@@ -474,6 +487,44 @@ function groupRunsByDocument(docs, runs) {
   })
 }
 
+/** What a reviewer sees of a document's latest scan, minus anything that names the document itself. */
+function scanSignature(group) {
+  const run = group.latest
+  if (!run) return null
+  return JSON.stringify({
+    fields: (run.result?.fields || []).map((f) => [f.key, f.value ?? null]),
+    relevance: run.result?.relevance?.status ?? null,
+    alerts: (run.result?.imageFraudAlerts || []).map((a) => [a.relevance ?? null, a.riskLevel, a.checks.map((c) => c.check).sort()]),
+    review: run.review_status,
+    pinned: Boolean(group.pinned),
+    failed: Boolean(group.failed),
+  })
+}
+
+/**
+ * The same file (same SHA-256) filed in several slots on this claim, with the
+ * same scan result, is shown as one card; the other filings fold inside it.
+ * Documents that are not scanned yet, or whose results differ, stay separate.
+ */
+function mergeIdenticalFiles(groups) {
+  const merged = []
+  const byKey = new Map()
+  for (const g of groups) {
+    const signature = g.doc.sha256 ? scanSignature(g) : null
+    const key = signature && `${g.doc.sha256}|${signature}`
+    if (key && byKey.has(key)) {
+      byKey.get(key).copies.push(g)
+      continue
+    }
+    const entry = { ...g, copies: [] }
+    if (key) byKey.set(key, entry)
+    merged.push(entry)
+  }
+  return merged
+}
+
+const joinAnd = (items) => (items.length <= 1 ? items.join('') : `${items.slice(0, -1).join(', ')} & ${items.at(-1)}`)
+
 function PinnedAlert({ run, onChanged }) {
   return (
     <div>
@@ -485,18 +536,27 @@ function PinnedAlert({ run, onChanged }) {
   )
 }
 
-function DocumentExtractionSection({ group, claim, scanning, canRescan, manualOnly, onRescan, onChanged, onDocumentRejected }) {
-  const { doc, latest, failed, pinned, previous, scanned } = group
+function DocumentExtractionSection({ group, claim, scanning, canRescan, manualOnly, onRescan, onChanged, onDocumentRejected, renderCopy }) {
+  const { doc, latest, failed, pinned, previous, scanned, copies = [] } = group
   const [showPrevious, setShowPrevious] = useState(false)
+  const [showCopies, setShowCopies] = useState(false)
   const reviewProps = { claim, documentStatus: doc.status, onRejected: onDocumentRejected, onChanged }
+  const filings = [group, ...copies]
+  const title = copies.length
+    ? `${joinAnd([...new Set(filings.map((g) => g.doc.file_name))])} — ${joinAnd(filings.map((g) => humanize(g.doc.doc_type)))}`
+    : doc.file_name
   return (
-    <section className="rounded-xl border" aria-label={`Extraction for ${doc.file_name}`}>
+    <section className="rounded-xl border" aria-label={`Extraction for ${title}`}>
       <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/30 px-3 py-2">
         <div className="flex min-w-0 items-center gap-2">
           <FileSearch className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
           <div className="min-w-0">
-            <p className="truncate text-sm font-medium">{doc.file_name}</p>
-            <p className="text-xs text-muted-foreground">{humanize(doc.doc_type)} · v{doc.version} · {humanize(doc.status).toLowerCase()}</p>
+            <p className="truncate text-sm font-medium" title={title}>{title}</p>
+            <p className="text-xs text-muted-foreground">
+              {copies.length
+                ? `Same file filed ${filings.length} times · ${filings.map((g) => `${humanize(g.doc.doc_type)} v${g.doc.version} ${humanize(g.doc.status).toLowerCase()}`).join(' · ')}`
+                : `${humanize(doc.doc_type)} · v${doc.version} · ${humanize(doc.status).toLowerCase()}`}
+            </p>
           </div>
         </div>
         {canRescan && scanned && !scanning && <RescanButton onClick={onRescan} />}
@@ -525,6 +585,17 @@ function DocumentExtractionSection({ group, claim, scanning, canRescan, manualOn
           </>
         )}
       </div>
+      {copies.length > 0 && (
+        <div className="border-t px-3 py-2">
+          <p className="text-xs text-muted-foreground">
+            The other {copies.length === 1 ? 'filing has' : `${copies.length} filings have`} the identical file and scan result. Actions above apply to {humanize(doc.doc_type)} only.
+          </p>
+          <Button size="sm" variant="ghost" className="mt-1 h-7 px-2 text-xs text-muted-foreground" aria-expanded={showCopies} onClick={() => setShowCopies((v) => !v)}>
+            {showCopies ? <ChevronUp /> : <ChevronDown />} {showCopies ? 'Hide' : 'Show'} {joinAnd(copies.map((g) => humanize(g.doc.doc_type)))}
+          </Button>
+          {showCopies && <div className="mt-2 space-y-3">{copies.map((g) => renderCopy(g))}</div>}
+        </div>
+      )}
       {previous.length > 0 && (
         <div className="border-t px-3 py-2">
           <Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-muted-foreground" aria-expanded={showPrevious} onClick={() => setShowPrevious((v) => !v)}>
@@ -609,6 +680,26 @@ function ExtractionCard({ claim, aiStatus, reloadClaim }) {
     if (claimChanged) reloadClaim()
   }
 
+  // Display only: identical files with identical results share one card. Auto-scan still works per document.
+  const shownGroups = useMemo(() => mergeIdenticalFiles(groups), [groups])
+  const renderSection = (g) => (
+    <DocumentExtractionSection
+      key={g.doc.id}
+      group={g}
+      claim={claim}
+      scanning={scanning.includes(g.doc.id)}
+      canRescan={canExtract && scanning.length === 0}
+      manualOnly={!autoScan}
+      onRescan={() => extract(g.doc)}
+      onChanged={onChanged}
+      onDocumentRejected={() => {
+        docs.reload()
+        reloadClaim()
+      }}
+      renderCopy={renderSection}
+    />
+  )
+
   return (
     <SectionCard
       title="Document extraction"
@@ -625,24 +716,7 @@ function ExtractionCard({ claim, aiStatus, reloadClaim }) {
         ) : (
           <QueryState query={runs} skeleton={<TableSkeleton rows={2} cols={4} />}>
             {() => (
-              <div className="space-y-4">
-                {groups.map((g) => (
-                  <DocumentExtractionSection
-                    key={g.doc.id}
-                    group={g}
-                    claim={claim}
-                    scanning={scanning.includes(g.doc.id)}
-                    canRescan={canExtract && scanning.length === 0}
-                    manualOnly={!autoScan}
-                    onRescan={() => extract(g.doc)}
-                    onChanged={onChanged}
-                    onDocumentRejected={() => {
-                      docs.reload()
-                      reloadClaim()
-                    }}
-                  />
-                ))}
-              </div>
+              <div className="space-y-4">{shownGroups.map((g) => renderSection(g))}</div>
             )}
           </QueryState>
         )}

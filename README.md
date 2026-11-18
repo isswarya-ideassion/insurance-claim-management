@@ -19,7 +19,7 @@ cp server/.env.example server/.env   # set DATABASE_URL and AUTH_TOKEN_SECRET; S
 npm run dev                          # migrates the database, then API on :4000 and web app on :5173
 ```
 
-Open http://localhost:5173 and sign in with any demo account (password `HarborDemo!2026`). With demo data the login page has one-click buttons for each role and a yellow **DEMO DATA** banner is shown.
+Open http://localhost:5173 and sign in with any demo account (password `HarborDemo!2026`). With demo data the login page has a **Quick role switch** list that signs in as any role in one step.
 
 | Role | Email |
 |---|---|
