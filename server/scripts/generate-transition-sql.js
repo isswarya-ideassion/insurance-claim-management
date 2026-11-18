@@ -8,7 +8,7 @@ import path from 'node:path'
 import { TRANSITIONS } from '../../shared/workflow.js'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
-const target = path.resolve(here, '../database/migrations/20261027000013_workflow_transitions.sql')
+const target = path.resolve(here, '../src/db/migrations/20261027000013_workflow_transitions.sql')
 
 const quote = (s) => `'${String(s).replace(/'/g, "''")}'`
 const rows = TRANSITIONS.map(

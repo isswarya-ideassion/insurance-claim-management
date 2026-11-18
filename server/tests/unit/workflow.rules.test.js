@@ -104,7 +104,7 @@ describe('claim workflow rules', () => {
   })
 
   it('keeps the database transition table in sync with shared/workflow.js', () => {
-    const sql = readFileSync(path.resolve(here, '../../database/migrations/20261027000013_workflow_transitions.sql'), 'utf8')
+    const sql = readFileSync(path.resolve(here, '../../src/db/migrations/20261027000013_workflow_transitions.sql'), 'utf8')
     for (const t of TRANSITIONS) {
       expect(sql).toContain(`('${t.from}', '${t.to}', array[${t.roles.map((r) => `'${r}'`).join(', ')}]::text[]`)
     }

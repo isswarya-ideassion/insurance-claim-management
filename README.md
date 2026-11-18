@@ -57,12 +57,12 @@ Generate secrets with `node -e "console.log(require('crypto').randomBytes(32).to
 ## Database and migrations
 
 ```bash
-npm run db:migrate      # apply server/database/migrations in order (also done automatically at API start)
+npm run db:migrate      # apply server/src/db/migrations in order (also done automatically at API start)
 npm run db:status       # list applied and pending migrations
 npm run db:seed-demo    # optional, development only: demo users, policies and claims
 ```
 
-Migrations are plain SQL files in `server/database/migrations/`, applied in filename order, each in its own transaction, and recorded in `app_meta.schema_migrations`; an advisory lock lets several API instances start together. `server/database/seed.sql` (the reference roles) is re-applied after them and is idempotent. If you change `shared/workflow.js`, regenerate the transition migration with `npm run db:transitions-sql` and ship it as a new migration.
+Migrations are plain SQL files in `server/src/db/migrations/`, applied in filename order, each in its own transaction, and recorded in `app_meta.schema_migrations`; an advisory lock lets several API instances start together. `server/src/db/seed.sql` (the reference roles) is re-applied after them and is idempotent. If you change `shared/workflow.js`, regenerate the transition migration with `npm run db:transitions-sql` and ship it as a new migration.
 
 Self-registration creates a `CLIENT` account. Staff accounts are created by Compliance & Security under **Users & roles → Create user**. On an empty non-production database, `npm run db:seed-demo` provides the first Compliance & Security user.
 
@@ -114,7 +114,7 @@ Without a provider (`AI_PROVIDER=none`, the default) the app shows these setup i
 | `npm start` | Start the API without file watching |
 | `npm test` | Server (unit, integration, RLS, end-to-end; needs `TEST_DATABASE_URL`) and client tests |
 | `npm run lint` | Syntax + import-resolution checks for both workspaces |
-| `npm run db:migrate` / `npm run db:status` | Apply / list database migrations (`server/database/migrations`) |
+| `npm run db:migrate` / `npm run db:status` | Apply / list database migrations (`server/src/db/migrations`) |
 | `npm run db:seed-demo` | Load the fictional demo data into a **development** database |
 | `npm run db:import-supabase` | One-time copy of a Supabase project into an empty PostgreSQL database |
 | `npm run db:transitions-sql` | Regenerate the workflow-transition migration from `shared/workflow.js` |
@@ -126,9 +126,9 @@ client/            Frontend: React app (pages per role, shared components, servi
 server/            Backend: Express API (modules: auth, policies, claims, documents, assignments, tasks,
                    evaluations, reserves, settlements, compliance, payments, closure, config,
                    integrations, customers, automation, notifications, reports, audit, admin),
-                   db layer, services (workflow, SLA, authority, crypto, config, Beacon intelligence),
+                   services (workflow, SLA, authority, crypto, config, Beacon intelligence),
                    seed data, tests
-  database/        SQL migrations and reference seed
+  src/db/          Database layer: query builder, migration runner, SQL migrations and reference seed
 shared/            Business rules used by both sides: roles, statuses, workflow transitions, permissions
 api/               Vercel Function entry that serves the Express API
 ```

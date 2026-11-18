@@ -3,10 +3,9 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
-// server/database: the schema lives with the backend that owns it.
-const serverRoot = path.resolve(here, '../..')
-export const MIGRATIONS_DIR = path.join(serverRoot, 'database', 'migrations')
-export const SEED_SQL = path.join(serverRoot, 'database', 'seed.sql')
+// Migrations and the reference seed live next to this file, with the rest of the db layer.
+export const MIGRATIONS_DIR = path.join(here, 'migrations')
+export const SEED_SQL = path.join(here, 'seed.sql')
 
 // Any constant works; it only has to be the same for every API instance.
 const MIGRATION_LOCK = 4_243_310_001
@@ -18,7 +17,7 @@ export function migrationFiles() {
 }
 
 /**
- * Applies pending files from server/database/migrations in filename order, each in its
+ * Applies pending files from server/src/db/migrations in filename order, each in its
  * own transaction, then the reference seed (idempotent). Applied files are
  * recorded in app_meta.schema_migrations. An advisory lock lets several API
  * instances start at once without applying a migration twice.
