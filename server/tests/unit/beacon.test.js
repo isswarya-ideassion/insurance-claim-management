@@ -10,13 +10,20 @@ describe('Beacon provider', () => {
   it('reports itself as configured, so the UI stops asking for a model', () => {
     expect(beacon.name).toBe('beacon')
     expect(beacon.configured).toBe(true)
-    expect(BEACON_AGENTS).toHaveLength(6)
+    // Beacon has rules for every agent, including intake-parser (local PDF/OCR) and claim-summarizer.
+    expect([...BEACON_AGENTS].sort()).toEqual(Object.values(AI_AGENTS).sort())
   })
 
-  it('refuses agents that need to read free text instead of faking an answer', async () => {
-    await expect(beacon.generateJson({ agent: AI_AGENTS.CLAIM_SUMMARIZER, input: {} })).rejects.toMatchObject({
+  it('refuses an agent it has no rules for instead of faking an answer', async () => {
+    await expect(beacon.generateJson({ agent: 'not-a-real-agent', input: {} })).rejects.toMatchObject({
       code: 'AI_AGENT_UNSUPPORTED',
     })
+  })
+
+  it('summarises a claim from recorded facts only', async () => {
+    const out = await run(AI_AGENTS.CLAIM_SUMMARIZER, { claim: { claim_type: 'HEALTH', status: 'DOCUMENT_REVIEW' }, documentsReceived: [], missingInformation: [], pendingActions: [] })
+    expect(typeof out.summary).toBe('string')
+    expect(out.summary).toMatch(/No documents received yet/)
   })
 })
 

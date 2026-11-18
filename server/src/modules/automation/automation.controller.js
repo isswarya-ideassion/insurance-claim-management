@@ -3,6 +3,7 @@ import * as reminders from './reminders.service.js'
 import * as ai from './ai-automation.service.js'
 import * as agents from './agents.service.js'
 import * as imageAlerts from './image-alerts.service.js'
+import * as autoExtraction from './auto-extraction.service.js'
 
 export async function status(req, res) {
   ok(res, ai.getAiStatus(req.ctx))
@@ -39,6 +40,10 @@ export async function runReminderSweep(req, res) {
 
 export async function extract(req, res) {
   created(res, await ai.runExtraction(req.ctx, req.params.id))
+}
+
+export async function ensureExtraction(req, res) {
+  ok(res, await autoExtraction.ensureDocumentExtraction(req.ctx, req.params.id))
 }
 
 export async function listExtractions(req, res) {

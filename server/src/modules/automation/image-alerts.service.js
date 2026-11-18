@@ -11,7 +11,9 @@ import {
   IMAGE_FORENSICS_AGENT,
   IMAGE_FORENSICS_ENGINE,
   describeAlerts,
+  fraudChecksOf,
   imageFraudAlertsSchema,
+  isFraudAlert,
   isImageMime,
   scanClaimImages,
 } from '../../services/intelligence/imageForensics.service.js'
@@ -26,6 +28,10 @@ import {
  * the run ACCEPTED in ai_runs and records fraud flags on the claim for
  * compliance to review. It never rejects, holds or settles the claim.
  */
+
+/** An unrelated upload is rejected through document review, not flagged as fraud. */
+const notAFraudAlert = () =>
+  businessRule('NOT_A_FRAUD_ALERT', 'Beacon found this file unrelated to the claim rather than tampered with. Reject the document instead of flagging fraud.')
 
 /** Runs whose output may carry imageFraudAlerts. */
 const ALERT_AGENTS = [AI_AGENTS.INTAKE_PARSER, AI_AGENTS.TRIAGE_ROUTER, IMAGE_FORENSICS_AGENT]
@@ -60,7 +66,8 @@ async function recordImageFraudFlags(t, ctx, claim, alerts, runId) {
 
   const byCode = new Map()
   for (const alert of alerts) {
-    for (const check of alert.checks) {
+    // Unrelated-document notices are never fraud flags.
+    for (const check of fraudChecksOf(alert)) {
       const code = (CHECK_REASON_CODES[check.check] || [check.code]).find((c) => codes[c])
       if (!code) continue
       const entry = byCode.get(code) || { severity: 'LOW', evidence: [] }
@@ -102,8 +109,10 @@ export async function acceptRunImageAlert(ctx, runId) {
   if (run.status !== 'SUCCEEDED') throw businessRule('AGENT_RUN_FAILED', 'A failed run has no alert to accept')
 
   const parsed = imageFraudAlertsSchema.safeParse(run.output?.imageFraudAlerts ?? [])
-  const alerts = parsed.success ? parsed.data : []
-  if (!alerts.length) throw businessRule('NO_IMAGE_ALERT', 'This suggestion has no image forensics alert to accept')
+  const all = parsed.success ? parsed.data : []
+  if (!all.length) throw businessRule('NO_IMAGE_ALERT', 'This suggestion has no image forensics alert to accept')
+  const alerts = all.filter(isFraudAlert)
+  if (!alerts.length) throw notAFraudAlert()
 
   return ctx.db.tx(async (t) => {
     const locked = await t.findOne('ai_runs', { id: run.id }, { forUpdate: true })
@@ -166,7 +175,9 @@ export async function getDocumentImageForensics(ctx, documentId) {
     applicable: true,
     alert: alerts[0] || null,
     accepted: accepted ? { runId: accepted.id, agent: accepted.agent, by: nameOf(names, accepted.decided_by), at: accepted.decided_at } : null,
-    canAccept: claim.customer_id !== ctx.actor.id,
+    // An unrelated-document notice is answered by rejecting the document, not by flagging fraud.
+    canAccept: claim.customer_id !== ctx.actor.id && Boolean(alerts[0] && isFraudAlert(alerts[0])),
+    documentStatus: document.status,
     engine: IMAGE_FORENSICS_ENGINE,
   }
 }
@@ -179,8 +190,10 @@ export async function acceptDocumentImageAlert(ctx, documentId) {
   if (await acceptedRunFor(ctx.db, documentId)) throw conflict('An image alert for this document has already been accepted', 'ALREADY_ACCEPTED')
 
   const started = Date.now()
-  const alerts = await imageAlertsForRun(ctx.db, claim, { documentId, requestId: ctx.actor.requestId })
-  if (!alerts.length) throw businessRule('NO_IMAGE_ALERT', 'Beacon found no fraud indicators in this image')
+  const scanned = await imageAlertsForRun(ctx.db, claim, { documentId, requestId: ctx.actor.requestId })
+  if (!scanned.length) throw businessRule('NO_IMAGE_ALERT', 'Beacon found no fraud indicators in this image')
+  const alerts = scanned.filter(isFraudAlert)
+  if (!alerts.length) throw notAFraudAlert()
 
   const result = await ctx.db.tx(async (t) => {
     const now = new Date()

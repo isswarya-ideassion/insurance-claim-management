@@ -24,6 +24,7 @@ import { lockClaim, transitionClaim } from '../../services/workflow.service.js'
 import { recordAudit } from '../../services/audit.service.js'
 import { notify, claimLink } from '../../services/notification.service.js'
 import { profileMap, nameOf } from '../../services/presenters.js'
+import { queueUploadScan } from '../automation/auto-extraction.service.js'
 
 const CUSTOMER_UPLOAD_STATUSES = ['DRAFT', 'SUBMITTED', 'POLICY_VERIFICATION', 'DOCUMENTS_REQUIRED', 'DOCUMENT_REVIEW', 'INVESTIGATION', 'REOPENED']
 const REQUEST_DAYS = 7
@@ -127,7 +128,7 @@ export async function uploadDocument(ctx, claimId, file, fields) {
   const sha256 = createHash('sha256').update(file.buffer).digest('hex')
   const fileName = sanitizeFileName(file.originalname)
 
-  return ctx.db.tx(async (t) => {
+  const result = await ctx.db.tx(async (t) => {
     const locked = await lockClaim(t, claimId)
     // File contents and metadata commit together, so a failed upload leaves nothing behind.
     await ctx.storage.put(storageKey, file.buffer, mime, t)
@@ -216,6 +217,10 @@ export async function uploadDocument(ctx, claimId, file, fields) {
     }
     return { document: presentDocument(doc, {}, customer), claimStatus: claimAfter.status }
   })
+  // Beacon reads the new file (OCR fields + image forensics) in the background,
+  // so the extraction and any fraud alert are ready when a reviewer opens it.
+  queueUploadScan(ctx, result.document.id)
+  return result
 }
 
 /** Streams the current version, or a specific earlier version for staff. */
@@ -293,7 +298,24 @@ export async function reviewQueue(ctx, query) {
   }
 }
 
-export async function reviewDocument(ctx, documentId, { decision, comment, rejectionReason }) {
+/**
+ * Whether Beacon really marked this document unrelated to the claim (an
+ * extraction or forensics run whose output says so), so the audit entry for a
+ * one-click rejection only claims a Beacon flag that exists.
+ */
+async function beaconFlaggedIrrelevant(t, documentId) {
+  const rows = await t.query(
+    `select 1 from public.ai_runs
+      where document_id = $1 and status = 'SUCCEEDED'
+        and (output -> 'relevance' ->> 'status' = 'IRRELEVANT'
+             or output -> 'imageFraudAlerts' @> '[{"relevance":"IRRELEVANT"}]'::jsonb)
+      limit 1`,
+    [documentId],
+  )
+  return rows.length > 0
+}
+
+export async function reviewDocument(ctx, documentId, { decision, comment, rejectionReason, beaconFlag = null }) {
   requirePermission(ctx.actor, 'documents.review')
   return ctx.db.tx(async (t) => {
     const doc = await t.findOne('documents', { id: documentId }, { forUpdate: true })
@@ -310,6 +332,9 @@ export async function reviewDocument(ctx, documentId, { decision, comment, rejec
     }
 
     const accepted = decision === 'ACCEPT'
+    // Recorded only when a stored Beacon run backs it; otherwise the rejection
+    // stands as an ordinary one.
+    const beaconIrrelevant = !accepted && beaconFlag === 'IRRELEVANT_DOCUMENT' && (await beaconFlaggedIrrelevant(t, doc.id))
     const now = new Date()
     const status = accepted ? 'ACCEPTED' : 'REJECTED'
     const updated = await t.updateById('documents', doc.id, {
@@ -333,7 +358,7 @@ export async function reviewDocument(ctx, documentId, { decision, comment, rejec
       claimId: claim.id,
       before: doc,
       after: updated,
-      metadata: { decision, comments: comment, reason: rejectionReason },
+      metadata: { decision, comments: comment, reason: rejectionReason, beaconFlag: beaconIrrelevant ? 'IRRELEVANT_DOCUMENT' : null },
     })
 
     await notify(ctx, t, {

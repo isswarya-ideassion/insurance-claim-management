@@ -40,6 +40,8 @@ export function automationRoutes() {
 
   // A. Document extraction (AI; results need confirmation before they are saved)
   router.post('/documents/:id/extractions', byId, controller.extract)
+  // Scan on first view when the current version has no run yet (Beacon only).
+  router.post('/documents/:id/extractions/ensure', byId, controller.ensureExtraction)
   router.get('/claims/:id/automation/extractions', byId, controller.listExtractions)
   router.post('/automation/extractions/:id/apply', validate({ params: idParams, body: applyExtractionSchema }), controller.applyExtraction)
   router.post('/automation/extractions/:id/discard', byId, controller.discardExtraction)

@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { AlertTriangle, CheckCircle2, CircleDashed, Clock, FileSearch, Sparkles, XCircle } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, CircleDashed, Clock, FileSearch, Sparkles, XCircle } from 'lucide-react'
 import { humanize, STATUS_LABELS, EXTRACTION_EDITABLE_STATUSES } from '@shared/constants.js'
 import { automationService } from '@/services/automationService.js'
 import { documentsService } from '@/services/documentsService.js'
@@ -22,6 +22,8 @@ import {
   RuleBadge,
 } from '@/components/automation/AutomationComponents.js'
 import { RunImageForensicsAlert } from '@/components/automation/ImageForensicsAlert.js'
+import { RescanButton, ScanningSkeleton } from '@/components/automation/DocumentAiScan.js'
+import { UnnecessaryDocumentNotice, isIrrelevant } from '@/components/automation/UnnecessaryDocumentNotice.js'
 import { formatDate, formatDateTime, formatMoney, formatRelative } from '@/utils/format.js'
 import { cn } from '@/lib/utils.js'
 
@@ -297,7 +299,10 @@ function displayValue(field, value) {
   return String(value)
 }
 
-function ExtractionReview({ run, claim, onChanged }) {
+/** One extraction run. The document's name is on the section around it. `imageAlertPinned`: an accepted alert is already shown above. */
+function ExtractionReview({ run, claim, imageAlertPinned = false, documentStatus, onRejected, onChanged }) {
+  // A non-image file's relevance comes from its own text; an image's notice is part of its forensics banner.
+  const unrelatedFile = isIrrelevant(run.result?.relevance) && !(run.result?.imageFraudAlerts || []).some(isIrrelevant)
   const { can } = useAuth()
   const fields = run.result?.fields || []
   const applicable = fields.filter((f) => f.applicable)
@@ -314,8 +319,8 @@ function ExtractionReview({ run, claim, onChanged }) {
     <div className="rounded-lg border">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b px-3 py-2">
         <div className="flex flex-wrap items-center gap-2 text-sm">
-          <FileSearch className="size-4 text-muted-foreground" aria-hidden="true" />
-          <span className="font-medium">{run.result?.document?.file_name}</span>
+          <span className="font-medium">Extracted fields</span>
+          {run.result?.document?.version != null && <span className="text-muted-foreground">· v{run.result.document.version}</span>}
           {run.result?.documentType && <span className="text-muted-foreground">· {run.result.documentType}</span>}
           <AiBadge />
         </div>
@@ -329,7 +334,18 @@ function ExtractionReview({ run, claim, onChanged }) {
           <span>{formatDateTime(run.created_at)}</span>
         </div>
       </div>
-      <RunImageForensicsAlert run={run} className="m-3" onAccepted={() => onChanged()} />
+      {!imageAlertPinned && (
+        <RunImageForensicsAlert run={run} className="m-3" onAccepted={() => onChanged()} documentStatus={documentStatus} onRejected={onRejected} />
+      )}
+      {unrelatedFile && (
+        <UnnecessaryDocumentNotice
+          className="m-3"
+          documentId={run.document_id}
+          detail={run.result.relevance.detail}
+          documentStatus={documentStatus}
+          onRejected={onRejected}
+        />
+      )}
       <div className="overflow-x-auto">
         <Table>
           <TableHeader>
@@ -429,71 +445,207 @@ function ExtractionReview({ run, claim, onChanged }) {
   )
 }
 
+const INTAKE_PARSER = 'intake-parser'
+const hasAcceptedAlert = (run) => (run.applied_fields || []).includes('image_fraud_alert')
+
+/** Whether a run read the document's current version (a failed run has no output, so its time decides). */
+function isCurrentVersion(run, doc) {
+  const version = run.result?.document?.version
+  if (version != null) return version === doc.version
+  return new Date(run.created_at) >= new Date(doc.received_at)
+}
+
+/**
+ * One section per document. The newest successful run on the current version
+ * is the active card; an accepted image alert stays pinned above it; every
+ * other run folds into "Show previous runs". Runs arrive newest first.
+ */
+function groupRunsByDocument(docs, runs) {
+  return docs.map((doc) => {
+    const own = runs.filter((r) => r.document_id === doc.id)
+    const extractions = own.filter((r) => r.agent === INTAKE_PARSER)
+    const current = extractions.filter((r) => isCurrentVersion(r, doc))
+    const latest = current.find((r) => r.status === 'SUCCEEDED') || null
+    const failed = current[0]?.status === 'FAILED' ? current[0] : null
+    const accepted = own.find(hasAcceptedAlert) || null
+    const pinned = accepted && accepted.id !== latest?.id ? accepted : null
+    const shown = new Set([latest?.id, pinned?.id, failed?.id].filter(Boolean))
+    return { doc, latest, failed, pinned, previous: extractions.filter((r) => !shown.has(r.id)), scanned: current.length > 0 }
+  })
+}
+
+function PinnedAlert({ run, onChanged }) {
+  return (
+    <div>
+      <p className="mb-1 text-xs text-muted-foreground">
+        Image alert accepted {run.agent === INTAKE_PARSER ? `on the scan of ${formatDateTime(run.created_at)}` : 'from Document Review'}
+      </p>
+      <RunImageForensicsAlert run={run} onAccepted={() => onChanged()} />
+    </div>
+  )
+}
+
+function DocumentExtractionSection({ group, claim, scanning, canRescan, manualOnly, onRescan, onChanged, onDocumentRejected }) {
+  const { doc, latest, failed, pinned, previous, scanned } = group
+  const [showPrevious, setShowPrevious] = useState(false)
+  const reviewProps = { claim, documentStatus: doc.status, onRejected: onDocumentRejected, onChanged }
+  return (
+    <section className="rounded-xl border" aria-label={`Extraction for ${doc.file_name}`}>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/30 px-3 py-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <FileSearch className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium">{doc.file_name}</p>
+            <p className="text-xs text-muted-foreground">{humanize(doc.doc_type)} · v{doc.version} · {humanize(doc.status).toLowerCase()}</p>
+          </div>
+        </div>
+        {canRescan && scanned && !scanning && <RescanButton onClick={onRescan} />}
+      </div>
+      <div className="space-y-3 p-3">
+        {pinned && <PinnedAlert run={pinned} onChanged={onChanged} />}
+        {scanning ? (
+          <ScanningSkeleton />
+        ) : (
+          <>
+            {failed && (
+              <p className="flex items-start gap-1.5 text-sm text-red-700">
+                <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                The latest scan ({formatDateTime(failed.created_at)}) could not read this document.{canRescan ? ' Re-scan to try again.' : ''}
+              </p>
+            )}
+            {latest && <ExtractionReview run={latest} imageAlertPinned={Boolean(pinned)} {...reviewProps} />}
+            {!scanned &&
+              (manualOnly && canRescan ? (
+                <Button size="sm" variant="outline" onClick={onRescan}>
+                  <Sparkles /> Extract fields
+                </Button>
+              ) : (
+                <p className="text-sm text-muted-foreground">Not scanned yet.</p>
+              ))}
+          </>
+        )}
+      </div>
+      {previous.length > 0 && (
+        <div className="border-t px-3 py-2">
+          <Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-muted-foreground" aria-expanded={showPrevious} onClick={() => setShowPrevious((v) => !v)}>
+            {showPrevious ? <ChevronUp /> : <ChevronDown />} {showPrevious ? 'Hide' : 'Show'} previous runs ({previous.length})
+          </Button>
+          {showPrevious && (
+            <div className="mt-2 space-y-3">
+              {previous.map((run) =>
+                run.status === 'SUCCEEDED' ? (
+                  <ExtractionReview key={run.id} run={run} imageAlertPinned={Boolean(pinned)} {...reviewProps} />
+                ) : (
+                  <p key={run.id} className="text-xs text-muted-foreground">
+                    {formatDateTime(run.created_at)} · scan failed, no values
+                  </p>
+                ),
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  )
+}
+
 function ExtractionCard({ claim, aiStatus, reloadClaim }) {
   const { can } = useAuth()
   const docs = useApiQuery(() => documentsService.list(claim.id), [claim.id])
   const runs = useApiQuery(() => automationService.extractions(claim.id), [claim.id])
   const ai = useAiCall()
-  const [runningDoc, setRunningDoc] = useState(null)
+  const [scanning, setScanning] = useState([])
   const [lastDoc, setLastDoc] = useState(null)
-  const canExtract = can('automation.extract') && aiStatus?.configured
-  const extractable = (docs.data || []).filter((d) => d.status !== 'SUPERSEDED')
+  const attempted = useRef(new Set())
+  const mounted = useRef(true)
+  const canExtract = can('automation.extract') && Boolean(aiStatus?.configured)
+  // Beacon is local and free, so it scans on its own; a paid model provider waits for a click.
+  const autoScan = canExtract && aiStatus?.provider === 'beacon'
+  const extractable = useMemo(() => (docs.data || []).filter((d) => d.status !== 'SUPERSEDED'), [docs.data])
+  const groups = useMemo(() => groupRunsByDocument(extractable, runs.data || []), [extractable, runs.data])
+
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
+
+  // First-view fallback: scan, once per visit, each document whose current version has no run yet.
+  // Usually the upload already did this; the server also shares any scan still in progress.
+  useEffect(() => {
+    if (!autoScan || !docs.data || !runs.data) return
+    const todo = groups.filter((g) => !g.scanned && !attempted.current.has(`${g.doc.id}:${g.doc.version}`)).map((g) => g.doc)
+    if (todo.length === 0) return
+    todo.forEach((d) => attempted.current.add(`${d.id}:${d.version}`))
+    setScanning((ids) => [...ids, ...todo.map((d) => d.id)])
+    ;(async () => {
+      for (const d of todo) {
+        try {
+          await automationService.ensureExtraction(d.id)
+        } catch {
+          // Left as "Not scanned yet"; the reviewer can still scan by hand.
+        }
+        if (!mounted.current) return
+        setScanning((ids) => ids.filter((id) => id !== d.id))
+        await runs.reload()
+      }
+    })()
+    // runs.reload is stable; groups changes with the data it depends on.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoScan, groups])
 
   async function extract(doc) {
-    setRunningDoc(doc.id)
+    setScanning((ids) => [...ids, doc.id])
     setLastDoc(doc)
     const run = await ai.run(() => automationService.extract(doc.id))
-    setRunningDoc(null)
+    setScanning((ids) => ids.filter((id) => id !== doc.id))
     await runs.reload()
     if (run) ai.clear()
   }
 
+  const onChanged = async (claimChanged) => {
+    await runs.reload()
+    if (claimChanged) reloadClaim()
+  }
+
   return (
-    <SectionCard title="Document extraction" description="Read fields from an uploaded document, then confirm which values to save.">
+    <SectionCard
+      title="Document extraction"
+      description={
+        autoScan
+          ? 'Beacon reads each document automatically when it arrives. Check the values, then confirm which to save.'
+          : 'Read fields from an uploaded document, then confirm which values to save.'
+      }
+    >
       <div className="space-y-4">
+        <AiErrorNotice error={ai.error} onRetry={lastDoc ? () => extract(lastDoc) : undefined} />
         {extractable.length === 0 && !docs.loading ? (
           <EmptyState title="No documents to read" description="Uploaded claim documents will appear here." />
         ) : (
-          <ul className="divide-y rounded-lg border">
-            {extractable.map((d) => (
-              <li key={d.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm">
-                <div className="min-w-0">
-                  <p className="truncate font-medium">{d.file_name}</p>
-                  <p className="text-xs text-muted-foreground">{humanize(d.doc_type)} · v{d.version} · {humanize(d.status).toLowerCase()}</p>
-                </div>
-                {can('automation.extract') && (
-                  <Button size="sm" variant="outline" onClick={() => extract(d)} loading={runningDoc === d.id} disabled={!canExtract || Boolean(runningDoc)}>
-                    <Sparkles /> Extract fields
-                  </Button>
-                )}
-              </li>
-            ))}
-          </ul>
+          <QueryState query={runs} skeleton={<TableSkeleton rows={2} cols={4} />}>
+            {() => (
+              <div className="space-y-4">
+                {groups.map((g) => (
+                  <DocumentExtractionSection
+                    key={g.doc.id}
+                    group={g}
+                    claim={claim}
+                    scanning={scanning.includes(g.doc.id)}
+                    canRescan={canExtract && scanning.length === 0}
+                    manualOnly={!autoScan}
+                    onRescan={() => extract(g.doc)}
+                    onChanged={onChanged}
+                    onDocumentRejected={() => {
+                      docs.reload()
+                      reloadClaim()
+                    }}
+                  />
+                ))}
+              </div>
+            )}
+          </QueryState>
         )}
-        {runningDoc && <p className="text-sm text-muted-foreground">Reading the document… this can take up to a minute.</p>}
-        <AiErrorNotice error={ai.error} onRetry={lastDoc ? () => extract(lastDoc) : undefined} />
-        <QueryState query={runs} skeleton={<TableSkeleton rows={2} cols={4} />}>
-          {(list) => (
-            <div className="space-y-4">
-              {list.filter((r) => r.status === 'SUCCEEDED').map((run) => (
-                <ExtractionReview
-                  key={run.id}
-                  run={run}
-                  claim={claim}
-                  onChanged={async (claimChanged) => {
-                    await runs.reload()
-                    if (claimChanged) reloadClaim()
-                  }}
-                />
-              ))}
-              {list.some((r) => r.status === 'FAILED') && (
-                <p className="text-xs text-muted-foreground">
-                  {list.filter((r) => r.status === 'FAILED').length} earlier attempt(s) failed and produced no values.
-                </p>
-              )}
-            </div>
-          )}
-        </QueryState>
       </div>
     </SectionCard>
   )

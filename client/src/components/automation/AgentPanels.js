@@ -249,6 +249,7 @@ export function TriageAgentCard({ claim, onApplied }) {
           <div className="space-y-4">
             <RunImageForensicsAlert
               run={run}
+              onRejected={() => onApplied?.()}
               onAccepted={() => {
                 reload()
                 onApplied?.()

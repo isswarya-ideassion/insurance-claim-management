@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge.js'
 import { Button } from '@/components/ui/button.js'
 import { formatDate, formatDateTime, formatMoney } from '@/utils/format.js'
 import { cn } from '@/lib/utils.js'
+import { UnnecessaryDocumentNotice, isIrrelevant } from '@/components/automation/UnnecessaryDocumentNotice.js'
 
 /*
  * Beacon AI Image Forensics Alert — local, zero-cost checks on image documents:
@@ -62,11 +63,36 @@ function AlertItem({ alert, high }) {
 }
 
 /**
- * The banner itself. `accepted` is `{ by, at }` once a person accepted it.
- * `onAccept` is omitted for roles that cannot accept.
+ * Beacon's image results. Fraud alerts share one red/amber banner with
+ * "Accept Alert & Flag Fraud"; a file Beacon judged unrelated to the claim
+ * gets its own notice with "Reject Document" instead, never the fraud action.
+ * `accepted` is `{ by, at }` once a person accepted the fraud alert; `onAccept`
+ * is omitted for roles that cannot accept. `documentStatus` is known only when
+ * the banner is about one document.
  */
-export function ImageForensicsAlert({ alerts, accepted, onAccept, pending, className }) {
+export function ImageForensicsAlert({ alerts, accepted, onAccept, pending, documentStatus, onRejected, className }) {
   if (!alerts?.length) return null
+  const fraud = alerts.filter((a) => !isIrrelevant(a))
+  const unrelated = alerts.filter(isIrrelevant)
+  return (
+    <div className={cn('space-y-3', className)}>
+      {fraud.length > 0 && <FraudAlertBanner alerts={fraud} accepted={accepted} onAccept={onAccept} pending={pending} />}
+      {unrelated.map((a) => (
+        <UnnecessaryDocumentNotice
+          key={a.documentId}
+          documentId={a.documentId}
+          fileName={unrelated.length > 1 || fraud.length > 0 ? a.fileName : null}
+          detail={a.relevanceDetail}
+          notes={a.evidence.filter((e) => e.startsWith('Also noted'))}
+          documentStatus={documentStatus}
+          onRejected={onRejected}
+        />
+      ))}
+    </div>
+  )
+}
+
+function FraudAlertBanner({ alerts, accepted, onAccept, pending, className }) {
   const high = alerts.some((a) => a.riskLevel === 'HIGH')
   const top = alerts[0]
   return (
@@ -111,7 +137,7 @@ export function ImageForensicsAlert({ alerts, accepted, onAccept, pending, class
 }
 
 /** Alert attached to an AI suggestion (triage-router or intake-parser run). */
-export function RunImageForensicsAlert({ run, onAccepted, className }) {
+export function RunImageForensicsAlert({ run, onAccepted, onRejected, documentStatus, className }) {
   const { can } = useAuth()
   const action = useAction()
   const [acceptedNow, setAcceptedNow] = useState(false)
@@ -134,12 +160,14 @@ export function RunImageForensicsAlert({ run, onAccepted, className }) {
       accepted={accepted ? { by: acceptedNow ? 'you' : run.decided_by_name, at: acceptedNow ? null : run.decided_at } : null}
       onAccept={can('fraud.imageAlerts.accept') && run.human_decision !== 'REJECTED' ? accept : undefined}
       pending={action.pending}
+      documentStatus={documentStatus}
+      onRejected={onRejected}
     />
   )
 }
 
 /** Live scan of one image document, for the Document Review and preview dialogs. */
-export function DocumentImageForensicsPanel({ document, className }) {
+export function DocumentImageForensicsPanel({ document, onRejected, className }) {
   const { can } = useAuth()
   const isImage = Boolean(document?.mime_type?.startsWith('image/'))
   const enabled = isImage && can('fraud.imageAlerts.view')
@@ -175,6 +203,8 @@ export function DocumentImageForensicsPanel({ document, className }) {
       accepted={data.accepted}
       onAccept={can('fraud.imageAlerts.accept') && data.canAccept ? accept : undefined}
       pending={action.pending}
+      documentStatus={data.documentStatus ?? document.status}
+      onRejected={onRejected}
     />
   )
 }

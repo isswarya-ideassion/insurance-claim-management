@@ -12,6 +12,7 @@ import { formatFileSize } from '@/utils/format.js'
 import { MAX_UPLOAD_MB } from '@/constants/config.js'
 import { cn } from '@/lib/utils.js'
 import { DocumentImageForensicsPanel } from '@/components/automation/ImageForensicsAlert.js'
+import { DocumentAiScanPanel } from '@/components/automation/DocumentAiScan.js'
 
 const CUSTOMER_DOC_TYPES = DOCUMENT_TYPES.filter((c) => !INTERNAL_DOCUMENT_TYPES.includes(c))
 
@@ -117,6 +118,12 @@ export function ReviewDocumentDialog({ open, onOpenChange, document, onReviewed 
     }
   }, [open])
 
+  // The one-click reject on a Beacon unnecessary-document notice is a complete review.
+  function rejectedByBeaconNotice(result) {
+    onReviewed?.(result)
+    onOpenChange(false)
+  }
+
   async function submit() {
     const result = await action.run(() => documentsService.review(document.id, { decision, comment: comment || undefined, rejectionReason: rejectionReason || undefined }), {
       success: decision === 'ACCEPT' ? 'Document accepted' : 'Document rejected — claimant notified and follow-up task created',
@@ -129,7 +136,7 @@ export function ReviewDocumentDialog({ open, onOpenChange, document, onReviewed 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className={document?.mime_type?.startsWith('image/') ? 'max-h-[90vh] max-w-2xl overflow-y-auto' : undefined}>
+      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Review document</DialogTitle>
           <DialogDescription>
@@ -137,7 +144,8 @@ export function ReviewDocumentDialog({ open, onOpenChange, document, onReviewed 
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
-          {open && <DocumentImageForensicsPanel document={document} />}
+          {open && <DocumentImageForensicsPanel document={document} onRejected={rejectedByBeaconNotice} />}
+          {open && <DocumentAiScanPanel document={document} onRejected={rejectedByBeaconNotice} />}
           <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Decision">
             {['ACCEPT', 'REJECT'].map((d) => (
               <button

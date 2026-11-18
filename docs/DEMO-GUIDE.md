@@ -130,7 +130,7 @@ Runs entirely on the server with `AI_PROVIDER=beacon`: no model, no API, no cost
 **As `ops.olivia` — HPC-2026-000104 → Overview → Triage → Run**
 
 3. The same alert sits at the top of the triage suggestion. The image indicators are also added to the reason codes and raise the risk score.
-4. In the **Automation** tab, **Extract fields** on the PNG shows the alert above the extracted values. Beacon reads the image with its own OCR.
+4. In the **Automation** tab, each document has one section. Nobody needs to click **Extract fields**: Beacon reads every file when it is uploaded. A file uploaded before this feature is read the first time someone opens the tab or the review dialog, which shows *Beacon AI scanning document…* for a moment. Once the alert is accepted it stays pinned at the top of the PNG's section. Older runs are folded under **Show previous runs (N)**. The small ↻ icon re-scans a document.
 
 **As `adjuster.amara` — HPC-2026-000110 → Documents → preview `replacement-receipt-photo.png`**
 
