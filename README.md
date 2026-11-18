@@ -86,7 +86,7 @@ npm run build     # production web build
 
 ## Deploying to Vercel
 
-`vercel.json` builds the web app to `client/dist` and serves the API from `api/index.js` as one function. On Vercel, migrations never run on a request, scheduled jobs run through Vercel Cron (`/api/internal/cron/jobs`), uploads are capped at 4 MB and each instance keeps a pool of 3 connections; `api/index.js` applies these defaults.
+`vercel.json` builds the web app to `client/dist` and serves the API as one function: `api/index.js` is a one-line entry point (Vercel only runs functions from a root-level `api/` folder) that loads the backend handler in `server/src/serverless.js`. On Vercel, migrations never run on a request, scheduled jobs run through Vercel Cron (`/api/internal/cron/jobs`), uploads are capped at 4 MB and each instance keeps a pool of 3 connections; `server/src/serverless.js` applies these defaults.
 
 1. Create a PostgreSQL database (for example Neon, in the region closest to `"regions"` in `vercel.json`).
 2. From your machine, with the database's **direct** (unpooled) connection string: `DATABASE_URL=<url> DATABASE_SSL=require npm run db:migrate` (and `npm run db:seed-demo` for a demo). Repeat `db:migrate` before deploying any release that adds a migration.
@@ -138,7 +138,7 @@ server/            Backend: Express API (modules: auth, policies, claims, docume
                    seed data, tests
   src/db/          Database layer: query builder, migration runner, SQL migrations and reference seed
 shared/            Business rules used by both sides: roles, statuses, workflow transitions, permissions
-api/               Vercel Function entry that serves the Express API
+api/index.js       One-line Vercel entry point; the API itself is server/ (handler: server/src/serverless.js)
 ```
 
 ## Security model in brief
