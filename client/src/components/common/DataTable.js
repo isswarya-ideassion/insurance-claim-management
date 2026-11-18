@@ -82,16 +82,25 @@ export function Pagination({ meta, onPageChange, onPageSizeChange, className }) 
   const from = total === 0 ? 0 : (page - 1) * pageSize + 1
   const to = Math.min(page * pageSize, total)
   return (
-    <div className={cn('flex flex-col items-center justify-between gap-3 border-t px-4 py-3 text-sm sm:flex-row', className)}>
-      <p className="text-muted-foreground">
+    // Wraps instead of overflowing: the controls never shrink, so "Rows", the page-size list and the
+    // page buttons are never clipped, whatever the container width.
+    <div className={cn('flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-t px-4 py-3 text-sm', className)}>
+      <p className="min-w-0 text-muted-foreground">
         Showing <span className="tabular font-medium text-foreground">{from}</span>–<span className="tabular font-medium text-foreground">{to}</span> of{' '}
         <span className="tabular font-medium text-foreground">{total}</span>
       </p>
-      <div className="flex items-center gap-2">
+      <div className="ml-auto flex shrink-0 items-center gap-2 whitespace-nowrap">
         {onPageSizeChange && (
-          <label className="flex items-center gap-2 text-muted-foreground">
-            <span className="hidden sm:inline">Rows</span>
-            <NativeSelect value={pageSize} onChange={(e) => onPageSizeChange(Number(e.target.value))} className="h-8 w-20" aria-label="Rows per page">
+          <label className="flex shrink-0 items-center gap-2 text-muted-foreground">
+            <span>Rows</span>
+            {/* Sized by its content (the browser draws its own arrow): a fixed width with the shared
+                pr-8 left too little room and truncated the value. */}
+            <NativeSelect
+              value={pageSize}
+              onChange={(e) => onPageSizeChange(Number(e.target.value))}
+              className="tabular h-8 w-auto min-w-[4.5rem] shrink-0 pl-2.5 pr-2"
+              aria-label="Rows per page"
+            >
               {[10, 20, 50, 100].map((n) => (
                 <option key={n} value={n}>
                   {n}
@@ -103,7 +112,7 @@ export function Pagination({ meta, onPageChange, onPageSizeChange, className }) 
         <Button variant="outline" size="icon-sm" disabled={page <= 1} onClick={() => onPageChange(page - 1)} aria-label="Previous page">
           <ChevronLeft />
         </Button>
-        <span className="tabular px-1 text-muted-foreground">
+        <span className="tabular shrink-0 px-1 text-muted-foreground">
           {page} / {totalPages}
         </span>
         <Button variant="outline" size="icon-sm" disabled={page >= totalPages} onClick={() => onPageChange(page + 1)} aria-label="Next page">
