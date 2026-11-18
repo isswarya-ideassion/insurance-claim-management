@@ -481,7 +481,11 @@ export function NewClaimWizard({ draftId: initialDraftId, initialPolicy }) {
           onOpenChange={setUploadOpen}
           claimId={draftId}
           customer
-          onUploaded={async () => setDocuments(await documentsService.list(draftId))}
+          requiredDocTypes={required}
+          uploadedDocuments={documents}
+          onUploaded={async () => {
+      setDocuments(await documentsService.list(draftId))
+    }}
         />
       )}
 

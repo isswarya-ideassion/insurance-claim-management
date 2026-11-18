@@ -16,7 +16,8 @@ import { DocumentAiScanPanel } from '@/components/automation/DocumentAiScan.js'
 
 const CUSTOMER_DOC_TYPES = DOCUMENT_TYPES.filter((c) => !INTERNAL_DOCUMENT_TYPES.includes(c))
 
-export function UploadDocumentDialog({ open, onOpenChange, claimId, customer = false, defaultDocType, replaces, artifactRequirementId, onUploaded }) {
+export function UploadDocumentDialog({ open, onOpenChange, claimId, customer = false, defaultDocType,requiredDocTypes = [],
+  uploadedDocuments = [], replaces, artifactRequirementId, onUploaded }) {
   const [docType, setDocType] = useState(defaultDocType || '')
   const [file, setFile] = useState(null)
   const [localError, setLocalError] = useState(null)
@@ -52,6 +53,49 @@ export function UploadDocumentDialog({ open, onOpenChange, claimId, customer = f
   }
 
   const docTypes = customer ? CUSTOMER_DOC_TYPES : DOCUMENT_TYPES
+
+// Document types already uploaded successfully
+const uploadedTypes = new Set(
+  uploadedDocuments
+    .filter(
+      (doc) =>
+        doc.status !== 'REJECTED' &&
+        doc.status !== 'SUPERSEDED'
+    )
+    .map((doc) => doc.doc_type)
+)
+
+// Required documents that are still missing
+const availableRequired = requiredDocTypes.filter(
+  (type) =>
+    docTypes.includes(type) &&
+    !uploadedTypes.has(type)
+)
+
+// Remaining customer document types are optional
+const availableOptional = docTypes.filter(
+  (type) =>
+    !requiredDocTypes.includes(type) &&
+    !uploadedTypes.has(type)
+)
+
+// Build dropdown sections
+const documentSections = [
+  {
+    options: availableRequired.map((type) => ({
+      value: type,
+      label: humanize(type),
+    })),
+  },
+  {
+    label: 'Optional documents',
+    options: availableOptional.map((type) => ({
+      value: type,
+      label: humanize(type),
+    })),
+  },
+].filter((section) => section.options.length > 0)
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
@@ -60,9 +104,27 @@ export function UploadDocumentDialog({ open, onOpenChange, claimId, customer = f
           <DialogDescription>Files are stored privately and are only visible to people authorized for this claim. PDF, JPEG, PNG or WebP up to {MAX_UPLOAD_MB} MB.</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
-          <FormField label="Document type" required>
-            <Select value={docType} onValueChange={setDocType} placeholder="Select document type" disabled={Boolean(replaces)} options={docTypes.map((c) => ({ value: c, label: humanize(c) }))} />
-          </FormField>
+         <FormField label="Document type" required>
+  <Select
+    value={docType}
+    onValueChange={setDocType}
+    placeholder="Select document type"
+    disabled={Boolean(replaces)}
+    sections={
+      customer
+        ? documentSections
+        : undefined
+    }
+    options={
+      customer
+        ? []
+        : docTypes.map((type) => ({
+            value: type,
+            label: humanize(type),
+          }))
+    }
+  />
+</FormField>
           <div
             onDragOver={(e) => {
               e.preventDefault()
