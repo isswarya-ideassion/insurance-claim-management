@@ -15,8 +15,16 @@ Requirements: Node.js **20.19+** and a PostgreSQL **14+** server (for example `d
 
 ```bash
 npm install                          # installs client + server workspaces
-cp server/.env.example server/.env   # set DATABASE_URL and AUTH_TOKEN_SECRET; SEED_DEMO_DATA=true for the demo
 npm run dev                          # migrates the database, then API on :4000 and web app on :5173
+```
+
+Before the first `npm run dev`, create `server/.env` (it is never committed) with at least:
+
+```bash
+DATABASE_URL=postgresql://<user>:<password>@localhost:5432/harborpoint
+AUTH_TOKEN_SECRET=<at least 32 random characters>
+SEED_DEMO_DATA=true                  # fictional demo data; omit for real data
+AI_PROVIDER=beacon
 ```
 
 Open http://localhost:5173 and sign in with any demo account (password `HarborDemo!2026`). With demo data the login page has a **Quick role switch** list that signs in as any role in one step.
@@ -38,7 +46,7 @@ For real data set `FIELD_ENCRYPTION_KEY` (32 random bytes, base64) and keep `SEE
 
 ## Configuration
 
-All settings live in `server/.env` (start from `server/.env.example`). The server validates them on start and refuses to run without `DATABASE_URL` and `AUTH_TOKEN_SECRET`, or without `FIELD_ENCRYPTION_KEY` outside demo and test databases.
+All settings live in `server/.env`, which is never committed. The server validates them on start and refuses to run without `DATABASE_URL` and `AUTH_TOKEN_SECRET`, or without `FIELD_ENCRYPTION_KEY` outside demo and test databases.
 
 | Variable | Purpose |
 |---|---|
