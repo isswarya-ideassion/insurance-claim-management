@@ -183,9 +183,9 @@ const medicalLabels = {
     ? 'Estimated Medical Expenses (₹)'
     : 'Estimated Overseas Medical Expenses (₹)',
 
-  asset: isHealthClaim
-    ? 'Patient / Covered Person Details'
-    : 'Patient / Traveller Details',
+  asset: isMedicalClaim
+  ? 'Patient Name'
+  : 'Traveller Name',
 
   documentsHeading: isHealthClaim
     ? 'Medical Documents'
@@ -781,5 +781,6 @@ const medicalLabels = {
     </div>
   )
 }
+
 
 
