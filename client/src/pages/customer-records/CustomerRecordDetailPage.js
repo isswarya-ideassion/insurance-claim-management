@@ -130,7 +130,15 @@ export default function CustomerRecordDetailPage() {
                 <TableRow key={c.id}>
                   <TableCell><p className="font-medium">{c.claim_number}</p><p className="text-xs text-muted-foreground">{c.policy_number}</p></TableCell>
                   <TableCell><Badge tone="navy">{STATUS_LABELS[c.status] || humanize(c.status)}</Badge></TableCell>
-                  <TableCell className="text-sm">{humanize(c.loss_type || '')} · {formatDate(c.loss_date)}</TableCell>
+                  <TableCell className="text-sm">
+                        {
+                          c.claim_type === 'TRAVEL' && c.loss_type === 'MEDICAL_ABROAD'
+                            ? 'Emergency medical treatment overseas'
+                            : humanize(c.loss_type || '')
+                        }
+                        {' · '}
+                        {formatDate(c.loss_date)}
+                      </TableCell>
                   <TableCell className="text-sm">{formatDate(c.opened_at)}</TableCell>
                   <TableCell className="tabular text-right">{formatMoney(c.estimated_loss)}</TableCell>
                   <TableCell className="tabular text-right">{c.document_count}</TableCell>

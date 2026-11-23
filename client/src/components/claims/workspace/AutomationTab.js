@@ -155,17 +155,49 @@ function DocumentChecklistCard({ claim, onChanged }) {
 // ---------------------------------------------------------------------------
 // C. Summary — recorded facts and AI suggestions, visually separate
 // ---------------------------------------------------------------------------
-function FactsPanel({ facts }) {
+function FactsPanel({ facts,claim }) {
   const { loss, timeline, documentsReceived, missingInformation, pendingActions } = facts
+   const isHealthClaim = claim?.claim_type === 'HEALTH'
+  const isTravelMedicalClaim =
+    claim?.claim_type === 'TRAVEL' &&
+    (claim?.loss_type === 'MEDICAL_ABROAD' || loss?.type === 'MEDICAL_ABROAD')
+
+  const isMedicalClaim = isHealthClaim || isTravelMedicalClaim
   return (
     <div className="space-y-4">
       <KeyValue
         items={[
-          { label: 'Loss', value: loss.occurred_at ? `${formatDateTime(loss.occurred_at)} · ${humanize(loss.type || '')}` : '—' },
-          { label: 'Location', value: loss.location },
-          { label: 'Estimated loss', value: formatMoney(loss.estimated_loss) },
-          { label: 'Affected asset', value: loss.affected_asset },
-          { label: 'Description', value: loss.description, wide: true },
+          {
+              label: isHealthClaim
+                ? 'Medical event'
+                : isTravelMedicalClaim
+                  ? 'Medical emergency abroad'
+                  : 'Loss',
+              value: loss.occurred_at
+                ? `${formatDateTime(loss.occurred_at)} · ${
+                    loss.type === 'MEDICAL_ABROAD'
+                      ? 'Emergency medical treatment overseas'
+                      : humanize(loss.type || '')
+                  }`
+                : '—',
+            },
+            {
+              label: isMedicalClaim ? 'Hospital / clinic location' : 'Location',
+              value: loss.location,
+            },
+            {
+              label: isMedicalClaim ? 'Estimated medical expenses' : 'Estimated loss',
+              value: formatMoney(loss.estimated_loss),
+            },
+            {
+              label: isMedicalClaim ? 'Patient / traveller details' : 'Affected asset',
+              value: loss.affected_asset,
+            },
+            {
+              label: isMedicalClaim ? 'Medical condition and treatment details' : 'Description',
+              value: loss.description,
+              wide: true,
+            },
         ]}
       />
       <div className="grid gap-4 md:grid-cols-3">
@@ -229,7 +261,7 @@ function SummaryCard({ claim, aiStatus }) {
                 <h3 className="text-sm font-semibold">Recorded facts</h3>
                 <RuleBadge />
               </div>
-              <FactsPanel facts={s.facts} />
+              <FactsPanel facts={s.facts} claim={claim} />
             </div>
             <div className="rounded-xl border border-violet-200 bg-violet-50/40 p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
