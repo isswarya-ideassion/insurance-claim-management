@@ -509,6 +509,18 @@ const medicalLabels = {
                     {...register('lossDate')}
                   />
                 </FormField>
+               {isMedicalClaim && (
+              <FormField
+                label="Hospital Name"
+                error={errors.hospitalName?.message}
+                required
+              >
+                <Input
+                  placeholder="Enter hospital or clinic name"
+                  {...register('hospitalName')}
+                />
+              </FormField>
+            )}
                                 <FormField
                   label={isMedicalClaim ? medicalLabels.location : 'Loss location'}
                   hint={
