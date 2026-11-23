@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button.js'
 import { Input, Textarea } from '@/components/ui/input.js'
 import { Select } from '@/components/ui/select.js'
 import { AiBadge, AiErrorNotice } from '@/components/automation/AutomationComponents.js'
+import { RunImageForensicsAlert } from '@/components/automation/ImageForensicsAlert.js'
 import { formatDate, formatDateTime, formatMoney } from '@/utils/format.js'
 
 const REVIEW = {
@@ -43,7 +44,14 @@ export function useAgentAccess(agent) {
   // (e.g. Claims Operations Manager on Reserves/Approvals/Recovery) gets a card that always fails with 403.
   const tabOk = hasRole(...(CLAIM_TABS.find((t) => t.key === def.tab)?.roles || []))
   const canRun = tabOk && can(def.run)
-  const canView = tabOk && (canRun || can(def.apply) || hasRole('OPS_MANAGER', 'COMPLIANCE_SECURITY') || (agent === 'triage-router' && can('compliance.review')))
+  // Adjusters and Document Reviewers see the triage card for its Beacon image forensics alert
+  // (the server masks the fraud score and reasons from them).
+  const canView =
+    tabOk &&
+    (canRun ||
+      can(def.apply) ||
+      hasRole('OPS_MANAGER', 'COMPLIANCE_SECURITY') ||
+      (agent === 'triage-router' && (can('compliance.review') || can('fraud.imageAlerts.view'))))
   return { canRun, canView }
 }
 
@@ -101,7 +109,7 @@ function AgentCardBody({ claim, agent, description, renderResult, renderApply, o
           return (
             <div className="space-y-4 text-sm">
               {!data.configured && !latest && (
-                <p className="text-muted-foreground">AI is not configured on this server. An administrator sets AI_PROVIDER=ollama (or anthropic) in server/.env.</p>
+                <p className="text-muted-foreground">AI is not configured on this server. An administrator sets AI_PROVIDER=beacon (local, no cost), ollama or anthropic in server/.env.</p>
               )}
               {pending && <p className="text-muted-foreground">Asking the AI model… local models can take up to a minute.</p>}
               <AiErrorNotice error={error} onRetry={canRun ? run : undefined} />
@@ -113,7 +121,7 @@ function AgentCardBody({ claim, agent, description, renderResult, renderApply, o
                     <span>{formatDateTime(latest.created_at)} · {latest.model} · confidence {pct(latest.confidence)}</span>
                     {latest.decided_by_name && <span>· reviewed by {latest.decided_by_name}</span>}
                   </div>
-                  {renderResult(latest)}
+                  {renderResult(latest, { reload: query.reload })}
                   {reviewable && renderApply && (
                     <div className="space-y-3 rounded-lg border bg-muted/30 p-3">
                       {renderApply({ run: latest, pending, apply: (body, success) => act(async () => { const r = await automationService.applyAgentRun(latest.id, body); onApplied?.(); return r }, success) })}
@@ -235,23 +243,33 @@ export function TriageAgentCard({ claim, onApplied }) {
       agent="triage-router"
       description="Severity, complexity, a fraud indicator with reason codes, and a suggested adjuster. The score never decides a claim."
       onApplied={onApplied}
-      renderResult={(run) => {
+      renderResult={(run, { reload }) => {
         const r = run.result
         return (
-          <KeyValue
-            columns={3}
-            items={[
-              { label: 'Severity', value: humanize(r.severity) },
-              { label: 'Complexity', value: `${r.complexity} of 4` },
-              r.fraudScore != null
-                ? { label: 'Fraud indicator', value: `${r.fraudScore} / 100 (${humanize(r.fraudBand)})${r.aboveReviewThreshold ? ' · above review threshold' : ''}` }
-                : r.fraudBand && { label: 'Fraud risk band', value: humanize(r.fraudBand) },
-              r.fraudReasons && { label: 'Reason codes', value: <List items={r.fraudReasons.map((f) => `${humanize(f.code)} (${humanize(f.severity)}): ${f.explanation}`)} />, wide: true },
-              { label: 'Suggested adjuster', value: r.recommendedAdjuster ? `${r.recommendedAdjuster.name} (${r.recommendedAdjuster.openClaims} open claims)` : 'None suggested' },
-              { label: 'Routing reason', value: r.routingReason || '—', wide: true },
-              { label: 'Rationale', value: r.rationale, wide: true },
-            ]}
-          />
+          <div className="space-y-4">
+            <RunImageForensicsAlert
+              run={run}
+              onRejected={() => onApplied?.()}
+              onAccepted={() => {
+                reload()
+                onApplied?.()
+              }}
+            />
+            <KeyValue
+              columns={3}
+              items={[
+                { label: 'Severity', value: humanize(r.severity) },
+                { label: 'Complexity', value: `${r.complexity} of 4` },
+                r.fraudScore != null
+                  ? { label: 'Fraud indicator', value: `${r.fraudScore} / 100 (${humanize(r.fraudBand)})${r.aboveReviewThreshold ? ' · above review threshold' : ''}` }
+                  : r.fraudBand && { label: 'Fraud risk band', value: humanize(r.fraudBand) },
+                r.fraudReasons && { label: 'Reason codes', value: <List items={r.fraudReasons.map((f) => `${humanize(f.code)} (${humanize(f.severity)}): ${f.explanation}`)} />, wide: true },
+                { label: 'Suggested adjuster', value: r.recommendedAdjuster ? `${r.recommendedAdjuster.name} (${r.recommendedAdjuster.openClaims} open claims)` : 'None suggested' },
+                { label: 'Routing reason', value: r.routingReason || '—', wide: true },
+                { label: 'Rationale', value: r.rationale, wide: true },
+              ]}
+            />
+          </div>
         )
       }}
       renderApply={(p) => <TriageApply {...p} />}

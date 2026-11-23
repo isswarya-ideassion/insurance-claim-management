@@ -2,7 +2,7 @@
 -- It never creates users: accounts are created through the API's sign-in
 -- (registration, Users & roles, or the demo seed). For demo users and claims:
 --
---   npm run db:seed-demo       (development only; see docs/SETUP.md)
+--   npm run db:seed-demo       (development only; see README.md)
 --
 -- The eight roles follow the PRD (section 2) plus the Claims Operations Manager
 -- (migration 20261026000010). Segment configuration, authority

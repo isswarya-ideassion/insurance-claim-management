@@ -21,7 +21,7 @@ const schema = z.object({
   // disable | require (encrypted, certificate not checked) | verify-full (encrypted and verified)
   DATABASE_SSL: z.enum(['disable', 'require', 'verify-full']).default('disable'),
   DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(100).default(10),
-  // Apply pending migrations from database/migrations when the API starts.
+  // Apply pending migrations from server/src/db/migrations when the API starts.
   DB_MIGRATE_ON_START: flag(true),
 
   // Sessions are HS256 tokens signed with this secret (at least 32 characters).

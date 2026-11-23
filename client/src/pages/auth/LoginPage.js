@@ -5,7 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { AlertCircle, LogIn } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext.js'
 import { loginSchema } from '@/schemas/authSchemas.js'
-import { DEMO_ACCOUNTS } from '@/constants/config.js'
+import { DEMO_ACCOUNTS, DEMO_PASSWORD } from '@/constants/config.js'
 import { FormField } from '@/components/common/FormField.js'
 import { Button } from '@/components/ui/button.js'
 import { Input } from '@/components/ui/input.js'
@@ -27,6 +27,15 @@ export default function LoginPage() {
     } catch (err) {
       setError(err.message || 'Sign-in failed')
     }
+  }
+
+  // Demo servers only (the list is hidden otherwise): fill the account and sign in at once.
+  // The password stays out of the page text; a server with a custom DEMO_PASSWORD shows the normal sign-in error.
+  function quickSignIn(email) {
+    if (!email) return
+    setValue('email', email, { shouldValidate: true })
+    setValue('password', DEMO_PASSWORD, { shouldValidate: true })
+    handleSubmit(onSubmit)()
   }
 
   return (
@@ -66,26 +75,26 @@ export default function LoginPage() {
       </p>
 
       {demoData && (
-        <div className="mt-8 rounded-xl border border-amber-300 bg-amber-50 p-4">
-          <p className="text-sm font-semibold text-amber-900">Demo accounts</p>
-          <p className="mt-1 text-xs text-amber-900/80">
-            Fictional users seeded by the local API. Password: the server&apos;s DEMO_PASSWORD (default <code className="font-mono">HarborDemo!2026</code>).
-          </p>
-          <div className="mt-3 grid grid-cols-2 gap-1.5">
+        <div className="mt-8 border-t pt-4">
+          <label htmlFor="quick-role" className="text-xs font-medium text-muted-foreground">
+            Quick role switch
+          </label>
+          <select
+            id="quick-role"
+            value=""
+            disabled={formState.isSubmitting || serverUnreachable}
+            onChange={(e) => quickSignIn(e.target.value)}
+            className="mt-1 h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+          >
+            <option value="" disabled>
+              Sign in as…
+            </option>
             {DEMO_ACCOUNTS.map((a) => (
-              <button
-                key={a.email}
-                type="button"
-                className="rounded-md border border-amber-200 bg-white px-2 py-1.5 text-left text-xs text-amber-950 hover:border-amber-400"
-                onClick={() => {
-                  setValue('email', a.email, { shouldValidate: true })
-                  setValue('password', 'HarborDemo!2026', { shouldValidate: true })
-                }}
-              >
+              <option key={a.email} value={a.email}>
                 {a.label}
-              </button>
+              </option>
             ))}
-          </div>
+          </select>
         </div>
       )}
     </div>

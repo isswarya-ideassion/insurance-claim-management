@@ -3,10 +3,16 @@
 .env.*
 **/.env
 **/.env.*
-!**/.env.example
 node_modules
 **/node_modules
 server/.data
 coverage
 **/coverage
 dist
+
+# Not needed to build the web app or run the API function.
+docs/
+server/tests/
+server/scripts/
+**/*.md
+!README.md

@@ -11,6 +11,8 @@ import { FormField } from '@/components/common/FormField.js'
 import { formatFileSize } from '@/utils/format.js'
 import { MAX_UPLOAD_MB } from '@/constants/config.js'
 import { cn } from '@/lib/utils.js'
+import { DocumentImageForensicsPanel } from '@/components/automation/ImageForensicsAlert.js'
+import { DocumentAiScanPanel } from '@/components/automation/DocumentAiScan.js'
 
 const CUSTOMER_DOC_TYPES = DOCUMENT_TYPES.filter((c) => !INTERNAL_DOCUMENT_TYPES.includes(c))
 
@@ -178,6 +180,12 @@ export function ReviewDocumentDialog({ open, onOpenChange, document, onReviewed 
     }
   }, [open])
 
+  // The one-click reject on a Beacon unnecessary-document notice is a complete review.
+  function rejectedByBeaconNotice(result) {
+    onReviewed?.(result)
+    onOpenChange(false)
+  }
+
   async function submit() {
     const result = await action.run(() => documentsService.review(document.id, { decision, comment: comment || undefined, rejectionReason: rejectionReason || undefined }), {
       success: decision === 'ACCEPT' ? 'Document accepted' : 'Document rejected — claimant notified and follow-up task created',
@@ -190,7 +198,7 @@ export function ReviewDocumentDialog({ open, onOpenChange, document, onReviewed 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Review document</DialogTitle>
           <DialogDescription>
@@ -198,6 +206,8 @@ export function ReviewDocumentDialog({ open, onOpenChange, document, onReviewed 
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
+          {open && <DocumentImageForensicsPanel document={document} onRejected={rejectedByBeaconNotice} />}
+          {open && <DocumentAiScanPanel document={document} onRejected={rejectedByBeaconNotice} />}
           <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Decision">
             {['ACCEPT', 'REJECT'].map((d) => (
               <button
@@ -259,7 +269,7 @@ export function DocumentPreviewDialog({ open, onOpenChange, document }) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl">
+      <DialogContent className="max-h-[94vh] max-w-4xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{document?.file_name}</DialogTitle>
           <DialogDescription>Secure preview — the file is streamed through the API after an access check.</DialogDescription>
@@ -270,6 +280,7 @@ export function DocumentPreviewDialog({ open, onOpenChange, document }) {
           {url && document?.mime_type === 'application/pdf' && <iframe src={url} title={document.file_name} className="h-full w-full bg-white" />}
           {url && document?.mime_type?.startsWith('image/') && <img src={url} alt={document.file_name} className="max-h-full max-w-full object-contain" />}
         </div>
+        {open && <DocumentImageForensicsPanel document={document} />}
         <DialogFooter>
           <Button
             variant="outline"

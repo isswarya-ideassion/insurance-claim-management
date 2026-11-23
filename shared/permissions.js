@@ -53,6 +53,11 @@ export const PERMISSIONS = {
 
   'fraud.viewScore': [MGR, CS],
   'fraud.viewBand': [MGR, CS, ADJ, COM],
+  // Beacon AI Image Forensics alerts (local image checks: duplicate file, editing
+  // software / capture date, OCR total and date). Seeing an alert is not seeing
+  // the fraud score; accepting one records flags for compliance to review.
+  'fraud.imageAlerts.view': [COM, MGR, ADJ, DR, CS],
+  'fraud.imageAlerts.accept': [COM, MGR, ADJ, DR, CS],
 
   'payments.view': [PAY, MGR, CS],
   'payments.issue': [PAY],

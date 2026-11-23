@@ -6,6 +6,7 @@ import { createFieldCrypto, encryptLegacyFields } from './crypto.service.js'
 import { createDatabaseStorage } from './storage.service.js'
 import { createPasswordAuthProvider } from './authProvider.js'
 import { demoDataExists, ensureDemoUsers, seedDemoData } from '../seed/demoData.js'
+import { ensureImageForensicsDemo } from '../seed/imageForensicsDemo.js'
 import { logger } from '../config/logger.js'
 
 /** Wires the PostgreSQL database, sign-in, document storage and the other adapters. */
@@ -33,6 +34,8 @@ export async function createDependencies(config, { seed = config.demoData } = {}
     if (!(await demoDataExists(db))) await seedDemoData(seedOptions)
     // Demo databases created before a new demo role was added get its account too.
     else await ensureDemoUsers(seedOptions)
+    // Beacon AI Image Forensics demo image (idempotent; also upgrades older demo databases).
+    await ensureImageForensicsDemo(seedOptions)
   }
 
   return { config, db, email, payments, ai, crypto, authProvider, storage }

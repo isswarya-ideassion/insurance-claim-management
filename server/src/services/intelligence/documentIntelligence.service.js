@@ -36,6 +36,7 @@ export function unreadableMessage(reason, quality) {
     OCR_LOW_CONFIDENCE: 'The text in this image does not match any trained typeface closely enough to read. Review it by eye.',
     IMAGE_DECODE_FAILED: 'This image could not be decoded. Ask for it as a PNG or JPEG.',
     SCANNED_NEEDS_OCR: 'This PDF is a scan with no text layer. Review it by eye.',
+    PDF_PARSE_FAILED: 'This PDF is damaged or in a form Beacon cannot open. Review it by eye, or ask for it again.',
   }
   return MESSAGES[reason] ?? 'This document could not be read automatically. Review it by eye.'
 }
@@ -72,7 +73,15 @@ export function readFileText(buffer, mimeType) {
       return { text: '', hasTextLayer: false, reason: 'IMAGE_DECODE_FAILED', error: err.message }
     }
   }
-  const { text, hasTextLayer, pages } = extractPdfText(buffer)
+  let parsed
+  try {
+    parsed = extractPdfText(buffer)
+  } catch (err) {
+    // A truncated or malformed PDF is reported as unreadable, never thrown:
+    // the upload stands and a person reviews it by eye.
+    return { text: '', hasTextLayer: false, pages: 0, source: 'PDF_TEXT', reason: 'PDF_PARSE_FAILED', error: err.message }
+  }
+  const { text, hasTextLayer, pages } = parsed
   return {
     // Masked before it is returned or stored: an Aadhaar in a document must
     // not spread into logs, proposals or the UI.

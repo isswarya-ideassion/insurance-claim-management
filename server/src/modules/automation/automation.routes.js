@@ -24,6 +24,11 @@ export function automationRoutes() {
   router.post('/agent-runs/:id/apply', validate({ params: idParams, body: applyAgentSchema }), controller.applyAgentRun)
   router.post('/agent-runs/:id/discard', validate({ params: idParams, body: discardAgentSchema }), controller.discardAgentRun)
 
+  // Beacon AI Image Forensics (local, zero-cost): view on a document, accept from a run or a document
+  router.post('/ai-runs/:id/image-alert/accept', byId, controller.acceptRunImageAlert)
+  router.get('/documents/:id/image-forensics', byId, controller.documentImageForensics)
+  router.post('/documents/:id/image-forensics/accept', byId, controller.acceptDocumentImageAlert)
+
   // B + D. Missing-document detection and reminders (rule-based)
   router.get('/claims/:id/automation/document-checklist', byId, controller.documentChecklist)
   router.post('/claims/:id/automation/reminder-drafts', validate({ params: idParams, body: reminderDraftSchema }), controller.createReminderDraft)
@@ -35,6 +40,8 @@ export function automationRoutes() {
 
   // A. Document extraction (AI; results need confirmation before they are saved)
   router.post('/documents/:id/extractions', byId, controller.extract)
+  // Scan on first view when the current version has no run yet (Beacon only).
+  router.post('/documents/:id/extractions/ensure', byId, controller.ensureExtraction)
   router.get('/claims/:id/automation/extractions', byId, controller.listExtractions)
   router.post('/automation/extractions/:id/apply', validate({ params: idParams, body: applyExtractionSchema }), controller.applyExtraction)
   router.post('/automation/extractions/:id/discard', byId, controller.discardExtraction)

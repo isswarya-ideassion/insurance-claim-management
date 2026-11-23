@@ -399,8 +399,12 @@ export function decodeImage(buffer) {
   throw new Error('Unrecognised image format')
 }
 
-/** Minimal 8-bit grayscale PNG writer, for dumping intermediate stages while debugging. */
-export function encodeGrayPng(width, height, gray) {
+/**
+ * Minimal 8-bit grayscale PNG writer, for dumping intermediate stages while
+ * debugging. `text` adds tEXt metadata chunks (keyword → value), which is how
+ * editors such as Photoshop record "Software" and "Creation Time".
+ */
+export function encodeGrayPng(width, height, gray, { text = {} } = {}) {
   const raw = Buffer.alloc(height * (width + 1))
   for (let y = 0; y < height; y += 1) {
     raw[y * (width + 1)] = 0
@@ -422,6 +426,7 @@ export function encodeGrayPng(width, height, gray) {
   return Buffer.concat([
     Buffer.from(PNG_SIGNATURE),
     chunk('IHDR', ihdr),
+    ...Object.entries(text).map(([keyword, value]) => chunk('tEXt', Buffer.from(`${keyword}\0${value}`, 'latin1'))),
     chunk('IDAT', deflateSync(raw)),
     chunk('IEND', Buffer.alloc(0)),
   ])

@@ -2,6 +2,8 @@ import { ok, created } from '../../utils/http.js'
 import * as reminders from './reminders.service.js'
 import * as ai from './ai-automation.service.js'
 import * as agents from './agents.service.js'
+import * as imageAlerts from './image-alerts.service.js'
+import * as autoExtraction from './auto-extraction.service.js'
 
 export async function status(req, res) {
   ok(res, ai.getAiStatus(req.ctx))
@@ -40,6 +42,10 @@ export async function extract(req, res) {
   created(res, await ai.runExtraction(req.ctx, req.params.id))
 }
 
+export async function ensureExtraction(req, res) {
+  ok(res, await autoExtraction.ensureDocumentExtraction(req.ctx, req.params.id))
+}
+
 export async function listExtractions(req, res) {
   ok(res, await ai.listExtractions(req.ctx, req.params.id))
 }
@@ -70,6 +76,18 @@ export async function runAgent(req, res) {
 
 export async function applyAgentRun(req, res) {
   ok(res, await agents.applyAgentRun(req.ctx, req.params.id, req.body))
+}
+
+export async function acceptRunImageAlert(req, res) {
+  ok(res, await imageAlerts.acceptRunImageAlert(req.ctx, req.params.id))
+}
+
+export async function documentImageForensics(req, res) {
+  ok(res, await imageAlerts.getDocumentImageForensics(req.ctx, req.params.id))
+}
+
+export async function acceptDocumentImageAlert(req, res) {
+  ok(res, await imageAlerts.acceptDocumentImageAlert(req.ctx, req.params.id))
 }
 
 export async function discardAgentRun(req, res) {
