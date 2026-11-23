@@ -452,10 +452,8 @@ const medicalLabels = {
             {step === 2 && (
               <div className="grid gap-4 sm:grid-cols-2">
                 <h2 className="text-lg font-semibold sm:col-span-2">{isMedicalClaim ? medicalLabels.eventHeading : 'What happened?'}</h2>
-                <FormField label={isMedicalClaim ? medicalLabels.date : 'Loss date and time'} error={errors.lossDate?.message} required>
-                  <Input type="datetime-local" max={toDateTimeLocal(new Date())} {...register('lossDate')} />
-                </FormField>
-               <FormField
+                {/* LEFT SIDE - LOSS TYPE */}
+                <FormField
                   label={isMedicalClaim ? medicalLabels.type : 'Loss type'}
                   error={errors.lossType?.message}
                   required
@@ -467,26 +465,26 @@ const medicalLabels = {
                       <Select
                         value={field.value}
                         onValueChange={(value) => {
-                            clearErrors([
-                              'lossType',
+                          clearErrors([
+                            'lossType',
+                            'affectedAsset',
+                            'lossDescription',
+                            'lossLocation',
+                            'estimatedLoss',
+                          ])
+
+                          field.onChange(value)
+
+                          if (policy?.policy_type === 'TRAVEL') {
+                            setValue(
                               'affectedAsset',
-                              'lossDescription',
-                              'lossLocation',
-                              'estimatedLoss',
-                            ])
-
-                            field.onChange(value)
-
-                            if (policy?.policy_type === 'TRAVEL') {
-                              setValue(
-                                'affectedAsset',
-                                value === 'MEDICAL_ABROAD'
-                                  ? ''
-                                  : policy.insured_asset || '',
-                                { shouldValidate: true }
-                              )
-                            }
-                          }}
+                              value === 'MEDICAL_ABROAD'
+                                ? ''
+                                : policy.insured_asset || '',
+                              { shouldValidate: true }
+                            )
+                          }
+                        }}
                         placeholder={isMedicalClaim ? 'Select medical event type' : 'Select loss type'}
                         options={categories.map((c) => ({
                           value: c,
@@ -496,6 +494,19 @@ const medicalLabels = {
                         }))}
                       />
                     )}
+                  />
+                </FormField>
+
+                {/* RIGHT SIDE - DATE AND TIME */}
+                <FormField
+                  label={isMedicalClaim ? medicalLabels.date : 'Loss date and time'}
+                  error={errors.lossDate?.message}
+                  required
+                >
+                  <Input
+                    type="datetime-local"
+                    max={toDateTimeLocal(new Date())}
+                    {...register('lossDate')}
                   />
                 </FormField>
                                 <FormField
@@ -772,4 +783,3 @@ const medicalLabels = {
 }
 
 
-toast
