@@ -57,9 +57,6 @@ All settings live in `server/.env`, which is never committed. The server validat
 | `SEED_DEMO_DATA` | `true` creates fictional demo users, policies and claims on start (refused with `NODE_ENV=production`) |
 | `DB_MIGRATE_ON_START` | Apply pending migrations at start (default `true`; set `false` when a pipeline migrates) |
 | `AI_PROVIDER` | `beacon` (built-in rules, no network call), `anthropic`, `ollama` or `none` |
-| `AI_AUTOPILOT_ENABLED` | `true` starts Beacon AI Auto-Pilot switched on and enables its lifecycle triggers (submit, upload, status change). The control-bar toggle overrides the starting state. Beacon only (default `false`) |
-| `AI_AUTOPILOT_STP_MAX_LOSS` | Highest estimated loss (INR) that may go straight through intake and routing (default `25000`) |
-| `AI_AUTOPILOT_BATCH_SIZE` | Claims or documents per stage in one sweep (default `25`) |
 | `CLIENT_ORIGIN` | Allowed browser origin(s), comma-separated |
 | `MAX_UPLOAD_MB` | Largest upload, 1–10 MB (default 10; 4 on Vercel) |
 
@@ -114,20 +111,6 @@ ANTHROPIC_API_KEY=<your key>
 ```
 
 Without a provider (`AI_PROVIDER=none`, the default) the app shows these setup instructions instead of results. It never shows placeholder AI output. AI suggestions are always labeled with a 0–1 confidence, every run is recorded in `ai_runs` and audited as an agent action, and saving an extracted value needs explicit confirmation by an authorized user.
-
-### Beacon AI Auto-Pilot (straight-through processing)
-
-With `AI_PROVIDER=beacon`, the auto-pilot handles routine work and leaves exceptions to people. It runs from the scheduled jobs, from **Run Auto-Pilot Sweep** on the Operations, Manager, Document Review and Reminders workspaces (`POST /api/automation/autopilot/run`), and, with `AI_AUTOPILOT_ENABLED=true`, after claim submission, uploads and status changes.
-
-| Stage | Goes straight through | Left for a person |
-| --- | --- | --- |
-| Intake (Claims Ops) | Coverage verified when the policy is clearly covered, the loss is within `AI_AUTOPILOT_STP_MAX_LOSS` and there are no fraud, ring, anomaly or duplicate signals | Anything else, with the coverage and triage runs attached |
-| Documents (Reviewer) | Clean and relevant: accepted. Unrelated: rejected as "Auto-rejected by Beacon AI: unnecessary or non-claim document" (claimant notified). All decided: "Documents complete" | Fraud indicators or unreadable files stay pending, first in the review queue |
-| Routing (Claims Ops) | Least-loaded adjuster assigned (claim moves to Investigation) | Same risk screen as intake |
-| Adjuster pre-work | Reserve recommendation and subrogation assessment pre-computed for the adjuster to accept or override | — |
-| Payee & fraud shield | Unverified payees pre-screened | High-risk payees get a Payment Operator task; high image-forensics risk or a high-risk fraud ring opens an AI-flagged priority review for Compliance |
-
-It acts as an inactive service account (`Beacon AI Auto-Pilot`, no roles, cannot sign in) through the same services, workflow guards and database triggers as a person, and never approves a reserve or settlement, verifies a payee, issues a payment, places a hold, records a fraud flag or denies a claim. Each action is written to `autopilot_actions`, `ai_runs` and `audit_logs` (actor `AGENT`, e.g. `AI_AUTOPILOT_DOC_ACCEPTED`). `GET /api/automation/autopilot/summary` returns the live metrics.
 
 ## Scripts (run from the repository root)
 
