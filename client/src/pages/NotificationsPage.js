@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { useEffect } from 'react'
 import { Bell, CheckCheck, XCircle } from 'lucide-react'
 import { REJECTION_NOTIFICATION_TEMPLATES } from '@shared/constants.js'
 import { notificationsService } from '@/services/workflowService.js'
@@ -25,6 +26,24 @@ export default function NotificationsPage() {
       }),
     [params.page, params.pageSize, params.unread],
   )
+    useEffect(() => {
+    let fetching = false
+
+    const interval = setInterval(async () => {
+      if (fetching) return
+
+      fetching = true
+      try {
+        await query.reload()
+      } catch (error) {
+        console.error('Notification polling failed:', error)
+      } finally {
+        fetching = false
+      }
+    }, 3000)
+
+    return () => clearInterval(interval)
+  }, [query.reload])
   const action = useAction()
   const changed = () => window.dispatchEvent(new Event(NOTIFICATIONS_CHANGED))
 
@@ -118,3 +137,6 @@ export default function NotificationsPage() {
     </MotionPage>
   )
 }
+
+params
+
