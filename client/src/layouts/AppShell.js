@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { Bell, ChevronDown, LogOut, Menu, UserCog } from 'lucide-react'
@@ -81,33 +81,19 @@ export function AppShell() {
   const [unread, setUnread] = useState(0)
   const items = NAVIGATION[activeRole] || []
 
-  // Unread badge: one request on mount (shared and cached, so StrictMode and
-  // remounts do not repeat it), then every minute and after a change. Each
-  // refresh aborts the previous one; unmounting aborts and ignores everything.
-  useEffect(() => {
-    let cancelled = false
-    let controller = null
-    const refresh = (force = false) => {
-      controller?.abort()
-      controller = new AbortController()
-      notificationsService
-        .unreadCount({ signal: controller.signal, force })
-        .then((count) => {
-          if (!cancelled) setUnread(count)
-        })
-        .catch(() => {})
-    }
-    refresh()
-    const timer = setInterval(() => refresh(true), 60_000)
-    const onChanged = () => refresh(true)
-    window.addEventListener(NOTIFICATIONS_CHANGED, onChanged)
-    return () => {
-      cancelled = true
-      controller?.abort()
-      clearInterval(timer)
-      window.removeEventListener(NOTIFICATIONS_CHANGED, onChanged)
-    }
+  const refreshUnread = useCallback(() => {
+    notificationsService.unreadCount().then(setUnread).catch(() => {})
   }, [])
+
+  useEffect(() => {
+    refreshUnread()
+    const timer = setInterval(refreshUnread, 60_000)
+    window.addEventListener(NOTIFICATIONS_CHANGED, refreshUnread)
+    return () => {
+      clearInterval(timer)
+      window.removeEventListener(NOTIFICATIONS_CHANGED, refreshUnread)
+    }
+  }, [refreshUnread])
 
   // The page scrolls inside <main>, not the window: start every new page at the top.
   useEffect(() => {
@@ -121,11 +107,10 @@ export function AppShell() {
   }
 
   return (
-    // The shell is exactly one viewport tall and never scrolls itself: only the sidebar and <main> scroll.
-    <div className="flex h-screen w-full flex-col overflow-hidden">
+    <div className="flex h-full flex-col">
       <ModeBanner />
-      <div className="flex min-h-0 w-full flex-1 overflow-hidden">
-        <aside className="hidden h-full w-64 shrink-0 flex-col overflow-y-auto border-r border-sidebar-border bg-sidebar lg:flex">
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        <aside className="hidden w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar lg:flex">
           <Brand />
           <NavList items={items} />
         </aside>
@@ -133,14 +118,14 @@ export function AppShell() {
         <DialogPrimitive.Root open={mobileOpen} onOpenChange={setMobileOpen}>
           <SheetContent side="left" className="bg-sidebar p-0" aria-describedby={undefined}>
             <DialogPrimitive.Title className="sr-only">Navigation</DialogPrimitive.Title>
-            <div className="flex h-full flex-col">
+            <div className="flex h-dvh w-full flex-col overflow-hidden">
               <Brand />
               <NavList items={items} onNavigate={() => setMobileOpen(false)} />
             </div>
           </SheetContent>
         </DialogPrimitive.Root>
 
-        <div className="flex h-full min-w-0 flex-1 flex-col">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-3 border-b bg-card/95 px-4 backdrop-blur sm:px-6">
             <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setMobileOpen(true)} aria-label="Open navigation">
               <Menu />
@@ -230,9 +215,11 @@ export function AppShell() {
               </DropdownMenu>
             </div>
           </header>
-          {/* relative: <main> is the containing block for absolutely positioned descendants, so none can escape its scroll. */}
-          <main id="main" className="relative min-h-0 flex-1 overflow-y-auto">
-            <div className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-6 lg:px-8">
+          <main
+            id="main"
+            className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain"
+          >
+            <div className="mx-auto w-full max-w-[1400px] px-4 py-4 sm:px-6 lg:px-8">
               <ErrorBoundary resetKey={location.pathname}>
                 <Outlet />
               </ErrorBoundary>
@@ -243,3 +230,5 @@ export function AppShell() {
     </div>
   )
 }
+
+
