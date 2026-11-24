@@ -547,3 +547,47 @@ export function normalizeIndianMobile(value) {
   const d = indianMobileDigits(value)
   return d ? `+91 ${d.slice(0, 5)} ${d.slice(5)}` : null
 }
+
+// ---------------------------------------------------------------------------
+// Beacon AI Auto-Pilot: straight-through processing for routine work,
+// exception-only review for people. It never approves a settlement, issues a
+// payment, places a hold or denies a claim.
+// ---------------------------------------------------------------------------
+
+/**
+ * The Beacon AI Auto-Pilot service identity. A real users row (so ai_runs,
+ * reviewed_by and assigned_by can point at it) that is inactive and holds no
+ * roles, so nobody can sign in as it. Its audit entries are written as AGENT.
+ */
+export const BEACON_AUTOPILOT_USER_ID = '00000000-0000-4000-a000-00000000bea1'
+export const BEACON_AUTOPILOT_NAME = 'Beacon AI Auto-Pilot'
+
+/** Stages of the sweep, the role each one relieves, and what it does. */
+export const AUTOPILOT_STAGES = {
+  INTAKE: { label: 'Intake & triage', role: 'CLAIMS_OPS_MANAGER' },
+  ROUTING: { label: 'Adjuster routing', role: 'CLAIMS_OPS_MANAGER' },
+  DOCUMENT_REVIEW: { label: 'Document review', role: 'DOCUMENT_REVIEWER' },
+  ADJUSTER_PREWORK: { label: 'Adjuster pre-work', role: 'ADJUSTER' },
+  PAYEE_SHIELD: { label: 'Payee shield', role: 'PAYMENT_OPERATOR' },
+  FRAUD_SHIELD: { label: 'Fraud shield', role: 'COMPLIANCE_SECURITY' },
+}
+
+/** Audited actions, and the minutes of routine human work each one replaces (0 for escalations). */
+export const AUTOPILOT_ACTIONS = {
+  AI_AUTOPILOT_COVERAGE_VERIFIED: { stage: 'INTAKE', outcome: 'AUTOMATED', minutes: 12, label: 'Coverage verified' },
+  AI_AUTOPILOT_INTAKE_ESCALATED: { stage: 'INTAKE', outcome: 'ESCALATED', minutes: 0, label: 'Intake sent to Claims Ops' },
+  AI_AUTOPILOT_ADJUSTER_ASSIGNED: { stage: 'ROUTING', outcome: 'AUTOMATED', minutes: 8, label: 'Adjuster assigned' },
+  AI_AUTOPILOT_ROUTING_ESCALATED: { stage: 'ROUTING', outcome: 'ESCALATED', minutes: 0, label: 'Routing sent to Claims Ops' },
+  AI_AUTOPILOT_DOC_ACCEPTED: { stage: 'DOCUMENT_REVIEW', outcome: 'AUTOMATED', minutes: 6, label: 'Document accepted' },
+  AI_AUTOPILOT_DOC_REJECTED: { stage: 'DOCUMENT_REVIEW', outcome: 'AUTOMATED', minutes: 5, label: 'Unnecessary document rejected' },
+  AI_AUTOPILOT_DOC_ESCALATED: { stage: 'DOCUMENT_REVIEW', outcome: 'ESCALATED', minutes: 0, label: 'Document escalated' },
+  AI_AUTOPILOT_DOCS_COMPLETE: { stage: 'DOCUMENT_REVIEW', outcome: 'AUTOMATED', minutes: 4, label: 'Documents complete, sent to triage' },
+  AI_AUTOPILOT_PRECOMPUTED: { stage: 'ADJUSTER_PREWORK', outcome: 'AUTOMATED', minutes: 20, label: 'Reserve & subrogation pre-computed' },
+  // Screening only: verifying the payee stays a person's job, and an unverified payee still cannot be paid.
+  AI_AUTOPILOT_PAYEE_SCREENED: { stage: 'PAYEE_SHIELD', outcome: 'AUTOMATED', minutes: 10, label: 'Payee pre-screened' },
+  AI_AUTOPILOT_PAYEE_FLAGGED: { stage: 'PAYEE_SHIELD', outcome: 'ESCALATED', minutes: 0, label: 'Payee flagged' },
+  AI_AUTOPILOT_COMPLIANCE_FLAGGED: { stage: 'FRAUD_SHIELD', outcome: 'ESCALATED', minutes: 0, label: 'Fraud risk flagged to Compliance' },
+}
+
+/** Escalations raised because of fraud indicators (counted as "fraud alerts caught"). */
+export const AUTOPILOT_FRAUD_REASONS = ['IMAGE_FRAUD_ALERT', 'FRAUD_SIGNALS', 'FRAUD_RING', 'HIGH_RISK_PAYEE']

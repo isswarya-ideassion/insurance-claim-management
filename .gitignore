@@ -13,3 +13,6 @@ supabase/.branches/
 
 # Internal documentation (kept locally, not in the repository)
 docs/
+
+# Generated E2E test documents (server/scripts/generate-e2e-assets.js)
+demo-assets/

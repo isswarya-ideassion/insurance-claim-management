@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { Bell, ChevronDown, LogOut, Menu, UserCog } from 'lucide-react'
@@ -81,19 +81,33 @@ export function AppShell() {
   const [unread, setUnread] = useState(0)
   const items = NAVIGATION[activeRole] || []
 
-  const refreshUnread = useCallback(() => {
-    notificationsService.unreadCount().then(setUnread).catch(() => {})
-  }, [])
-
+  // Unread badge: one request on mount (shared and cached, so StrictMode and
+  // remounts do not repeat it), then every minute and after a change. Each
+  // refresh aborts the previous one; unmounting aborts and ignores everything.
   useEffect(() => {
-    refreshUnread()
-    const timer = setInterval(refreshUnread, 60_000)
-    window.addEventListener(NOTIFICATIONS_CHANGED, refreshUnread)
-    return () => {
-      clearInterval(timer)
-      window.removeEventListener(NOTIFICATIONS_CHANGED, refreshUnread)
+    let cancelled = false
+    let controller = null
+    const refresh = (force = false) => {
+      controller?.abort()
+      controller = new AbortController()
+      notificationsService
+        .unreadCount({ signal: controller.signal, force })
+        .then((count) => {
+          if (!cancelled) setUnread(count)
+        })
+        .catch(() => {})
     }
-  }, [refreshUnread])
+    refresh()
+    const timer = setInterval(() => refresh(true), 60_000)
+    const onChanged = () => refresh(true)
+    window.addEventListener(NOTIFICATIONS_CHANGED, onChanged)
+    return () => {
+      cancelled = true
+      controller?.abort()
+      clearInterval(timer)
+      window.removeEventListener(NOTIFICATIONS_CHANGED, onChanged)
+    }
+  }, [])
 
   // The page scrolls inside <main>, not the window: start every new page at the top.
   useEffect(() => {
@@ -107,10 +121,11 @@ export function AppShell() {
   }
 
   return (
-    <div className="flex h-full flex-col">
+    // The shell is exactly one viewport tall and never scrolls itself: only the sidebar and <main> scroll.
+    <div className="flex h-screen w-full flex-col overflow-hidden">
       <ModeBanner />
-      <div className="flex min-h-0 flex-1">
-        <aside className="hidden w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar lg:flex">
+      <div className="flex min-h-0 w-full flex-1 overflow-hidden">
+        <aside className="hidden h-full w-64 shrink-0 flex-col overflow-y-auto border-r border-sidebar-border bg-sidebar lg:flex">
           <Brand />
           <NavList items={items} />
         </aside>
@@ -125,7 +140,7 @@ export function AppShell() {
           </SheetContent>
         </DialogPrimitive.Root>
 
-        <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex h-full min-w-0 flex-1 flex-col">
           <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-3 border-b bg-card/95 px-4 backdrop-blur sm:px-6">
             <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setMobileOpen(true)} aria-label="Open navigation">
               <Menu />
@@ -215,7 +230,8 @@ export function AppShell() {
               </DropdownMenu>
             </div>
           </header>
-          <main id="main" className="min-h-0 flex-1 overflow-y-auto">
+          {/* relative: <main> is the containing block for absolutely positioned descendants, so none can escape its scroll. */}
+          <main id="main" className="relative min-h-0 flex-1 overflow-y-auto">
             <div className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-6 lg:px-8">
               <ErrorBoundary resetKey={location.pathname}>
                 <Outlet />

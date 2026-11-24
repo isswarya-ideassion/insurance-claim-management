@@ -67,6 +67,11 @@ export default function CustomerClaimDetailPage() {
   if (query.loading && !query.data) return <BlockSkeleton className="h-96" />
   if (query.error) return <ErrorState error={query.error} onRetry={query.reload} title={query.error.status === 404 ? 'Claim not found' : undefined} />
   const { claim, policy, requiredDocuments, openRequests } = query.data
+  const isHealthClaim = claim.claim_type === 'HEALTH'
+const isTravelMedicalClaim =
+  claim.claim_type === 'TRAVEL' && claim.loss_type === 'MEDICAL_ABROAD'
+
+const isMedicalClaim = isHealthClaim || isTravelMedicalClaim
   if (claim.status === 'DRAFT') return <Navigate to={`/customer/claims/${id}/edit`} replace />
   const refresh = () => Promise.all([query.reload(), docs.reload(), requests.reload(), timeline.reload()])
 
@@ -107,11 +112,31 @@ export default function CustomerClaimDetailPage() {
           <SectionCard title="Claim details">
             <KeyValue
               items={[
-                { label: 'Incident', value: `${humanize(claim.loss_type)} · ${formatDateTime(claim.loss_date)}` },
-                { label: 'Location', value: formatLocation(claim) },
-                { label: 'Description', value: claim.loss_description, wide: true },
-                { label: 'Estimated loss', value: formatMoney(claim.estimated_loss) },
-                { label: 'Affected property / asset', value: claim.affected_asset },
+                {
+                  label: isMedicalClaim
+                    ? isHealthClaim ? 'Medical event' : 'Medical emergency abroad'
+                    : 'Incident',
+                  value: `${claim.loss_type === 'MEDICAL_ABROAD'
+                    ? 'Emergency medical treatment overseas'
+                    : humanize(claim.loss_type)} · ${formatDateTime(claim.loss_date)}`,
+                },
+                {
+                  label: isMedicalClaim ? 'Hospital / clinic location' : 'Location',
+                  value: formatLocation(claim),
+                },
+                {
+                  label: isMedicalClaim ? 'Medical condition and treatment details' : 'Description',
+                  value: claim.loss_description,
+                  wide: true,
+                },
+                {
+                  label: isMedicalClaim ? 'Estimated medical expenses' : 'Estimated loss',
+                  value: formatMoney(claim.estimated_loss),
+                },
+                {
+                  label: isMedicalClaim ? 'Patient / traveller details' : 'Affected property / asset',
+                  value: claim.affected_asset,
+                },
                 { label: 'Insured name', value: claim.insured_name },
                 { label: 'Contact', value: `${claim.contact_name} · ${claim.contact_phone} · ${claim.contact_email}` },
                 claim.rejection_reason && { label: 'Outcome', value: claim.rejection_reason, wide: true },

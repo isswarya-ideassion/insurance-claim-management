@@ -16,6 +16,7 @@ import { Select } from '@/components/ui/select.js'
 import { PayeeIntake } from './PayeeIntake.js'
 import { formatDateTime, formatMoney, formatRelative, toDateTimeLocal, formatLocation } from '@/utils/format.js'
 import { TriageAgentCard } from '@/components/automation/AgentPanels.js'
+import { AutoHandledBadge, isBeaconActor } from '@/components/automation/BeaconBadges.js'
 
 
 /** Stage SLA clocks: running, paused (for example while the client owes documents) or stopped. */
@@ -82,6 +83,7 @@ function IntakePanel({ detail, reload }) {
                 <p className="flex items-center gap-2">
                   {coverage.result === 'COVERED' ? <CheckCircle2 className="size-4" /> : <XCircle className="size-4" />}
                   {humanize(coverage.result)} · {coverage.reviewed_by_name || 'System'} · {formatDateTime(coverage.created_at)}
+                  {isBeaconActor(coverage.reviewed_by) && <AutoHandledBadge />}
                 </p>
                 {coverage.notes && <p className="mt-1 text-xs text-muted-foreground">{coverage.notes}</p>}
                 {coverage.clause_refs?.length > 0 && <p className="mt-1 text-xs text-muted-foreground">Clauses: {coverage.clause_refs.join(', ')}</p>}
@@ -201,6 +203,11 @@ function NotesPanel({ claimId }) {
 
 export function OverviewTab({ detail, reload }) {
   const { claim, currentTask, complianceHold, duplicateOf, counts } = detail
+  const isHealthClaim = claim.claim_type === 'HEALTH'
+  const isTravelMedicalClaim =
+    claim.claim_type === 'TRAVEL' && claim.loss_type === 'MEDICAL_ABROAD'
+
+  const isMedicalClaim = isHealthClaim || isTravelMedicalClaim
   const { can } = useAuth()
   const action = useAction()
   const [escalateOpen, setEscalateOpen] = useState(false)
@@ -244,12 +251,39 @@ export function OverviewTab({ detail, reload }) {
               { label: 'Severity', value: humanize(claim.severity) },
               { label: 'Stage', value: claim.stage_label },
               claim.fraud_band && { label: 'Fraud risk', value: claim.fraud_score != null ? `${humanize(claim.fraud_band)} (${claim.fraud_score})` : humanize(claim.fraud_band) },
-              { label: 'Loss type', value: humanize(claim.loss_type) },
-              { label: 'Loss date & time', value: formatDateTime(claim.loss_date) },
-              { label: 'Location', value: formatLocation(claim) },
-              { label: 'Estimated loss', value: formatMoney(claim.estimated_loss) },
-              { label: 'Affected property / asset', value: claim.affected_asset },
-              { label: 'Description', value: claim.loss_description, wide: true },
+              {
+  label: isHealthClaim
+    ? 'Medical event type'
+    : isTravelMedicalClaim
+      ? 'Travel claim reason'
+      : 'Loss type',
+  value: claim.loss_type === 'MEDICAL_ABROAD'
+    ? 'Emergency medical treatment overseas'
+    : humanize(claim.loss_type),
+},
+{
+  label: isMedicalClaim
+    ? 'Medical event date & time'
+    : 'Loss date & time',
+  value: formatDateTime(claim.loss_date),
+},
+{
+  label: isMedicalClaim ? 'Hospital / clinic location' : 'Location',
+  value: formatLocation(claim),
+},
+{
+  label: isMedicalClaim ? 'Estimated medical expenses' : 'Estimated loss',
+  value: formatMoney(claim.estimated_loss),
+},
+{
+  label: isMedicalClaim ? 'Patient / traveller details' : 'Affected property / asset',
+  value: claim.affected_asset,
+},
+{
+  label: isMedicalClaim ? 'Medical condition and treatment details' : 'Description',
+  value: claim.loss_description,
+  wide: true,
+},
               claim.contact_name && { label: 'Contact', value: `${claim.contact_name} · ${claim.contact_phone}` },
               claim.contact_email && { label: 'Contact email', value: claim.contact_email },
               { label: 'Opened', value: formatDateTime(claim.opened_at) },

@@ -14,7 +14,9 @@ export const Checkbox = forwardRef(function Checkbox({ className, ...props }, re
     <CheckboxPrimitive.Root
       ref={ref}
       className={cn(
-        'peer size-4 shrink-0 rounded-[4px] border border-input bg-card shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 data-[state=checked]:border-accent data-[state=checked]:bg-accent data-[state=checked]:text-white',
+        // relative: Radix renders a hidden native <input> (position: absolute) next to the control; without a
+        // positioned ancestor it escapes the scroll container and stretches the whole document.
+        'peer relative size-4 shrink-0 rounded-[4px] border border-input bg-card shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 data-[state=checked]:border-accent data-[state=checked]:bg-accent data-[state=checked]:text-white',
         className,
       )}
       {...props}
@@ -31,7 +33,7 @@ export const Switch = forwardRef(function Switch({ className, ...props }, ref) {
     <SwitchPrimitive.Root
       ref={ref}
       className={cn(
-        'inline-flex h-5 w-9 shrink-0 items-center rounded-full border-2 border-transparent bg-slate-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring data-[state=checked]:bg-accent',
+        'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full border-2 border-transparent bg-slate-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring data-[state=checked]:bg-accent',
         className,
       )}
       {...props}

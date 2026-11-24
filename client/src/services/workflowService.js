@@ -50,9 +50,21 @@ export const paymentsService = {
   reconciliation: () => api.get('/payments/reconciliation/summary').then((r) => r.data),
 }
 
+// The unread badge is read on mount, every minute and after a change. A count
+// fetched in the last few seconds is reused, so a remount (StrictMode, layout
+// change) never asks again; `force` skips it after notifications change.
+const UNREAD_FRESH_MS = 5_000
+let unreadCache = null
+
 export const notificationsService = {
   list: (params) => api.get('/notifications', params),
-  unreadCount: () => api.get('/notifications/unread-count').then((r) => r.data.unread),
+  unreadCount: ({ signal, force = false } = {}) => {
+    if (!force && unreadCache && Date.now() - unreadCache.at < UNREAD_FRESH_MS) return Promise.resolve(unreadCache.value)
+    return api.get('/notifications/unread-count', undefined, { signal }).then((r) => {
+      unreadCache = { value: r.data.unread, at: Date.now() }
+      return r.data.unread
+    })
+  },
   markRead: (id) => api.post(`/notifications/${id}/read`).then((r) => r.data),
   markAllRead: () => api.post('/notifications/read-all').then((r) => r.data),
 }

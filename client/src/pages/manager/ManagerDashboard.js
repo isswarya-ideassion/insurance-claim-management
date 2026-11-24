@@ -5,6 +5,7 @@ import { claimsService } from '@/services/claimsService.js'
 import { approvalsService } from '@/services/workflowService.js'
 import { useApiQuery } from '@/hooks/useApi.js'
 import { PageHeader } from '@/components/common/PageHeader.js'
+import { AutopilotControlBar } from '@/components/automation/AutopilotControlBar.js'
 import { MotionPage } from '@/components/common/MotionPage.js'
 import { KpiCard } from '@/components/common/KpiCard.js'
 import { SectionCard } from '@/components/common/FormField.js'
@@ -36,6 +37,7 @@ export default function ManagerDashboard() {
           </>
         }
       />
+      <AutopilotControlBar onSweep={() => Promise.all([stats.reload(), workload.reload(), unassigned.reload()])} />
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <KpiCard index={0} label="Need adjuster" value={unassigned.meta?.total} icon={UserX} tone="amber" to="/manager/unassigned" />
         <KpiCard index={1} label="Reserve approvals" value={reserves.meta?.total} icon={Scale} tone="navy" to="/manager/reserves" />

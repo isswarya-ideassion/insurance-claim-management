@@ -11,7 +11,7 @@ const LINE_HEIGHT = 15
 const MAX_CHARS = 92
 const LINES_PER_PAGE = Math.floor((PAGE_HEIGHT - 2 * MARGIN) / LINE_HEIGHT)
 
-const toLatin1 = (s) => String(s).replace(/₹\s?/g, 'Rs. ').replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/[–—]/g, '-').replace(/[^\x20-\xff]/g, '?')
+const toLatin1 = (s) => String(s).replace(/₹\s?/g, 'Rs. ').replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/[–—]/g, '-').replace(/[^\x20-\xff\n]/g, '?') // keep line breaks: wrapText splits on them
 const escape = (s) => s.replace(/[\\()]/g, (c) => `\\${c}`)
 
 /** Splits text into lines of at most MAX_CHARS, keeping blank lines between paragraphs. */

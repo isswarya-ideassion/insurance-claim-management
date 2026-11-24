@@ -42,6 +42,8 @@ export const TABLES = {
   source_precedence: {},
   integration_sync_runs: {},
   consents: {},
+  autopilot_state: { json: ['last_sweep'] },
+  autopilot_actions: { json: ['details'] },
 }
 
 export function assertTable(table) {

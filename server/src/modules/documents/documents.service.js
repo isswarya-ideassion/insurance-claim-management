@@ -6,6 +6,7 @@ import {
   ALLOWED_UPLOAD_EXTENSIONS,
   ACTIVE_STATUSES,
   INTERNAL_DOCUMENT_TYPES,
+  BEACON_AUTOPILOT_USER_ID,
   humanize,
 } from '../../../../shared/constants.js'
 import { AppError, businessRule, forbidden, notFound, validationError } from '../../utils/errors.js'
@@ -25,6 +26,7 @@ import { recordAudit } from '../../services/audit.service.js'
 import { notify, claimLink } from '../../services/notification.service.js'
 import { profileMap, nameOf } from '../../services/presenters.js'
 import { queueUploadScan } from '../automation/auto-extraction.service.js'
+import { queueAutopilotForClaim } from '../automation/autopilot.hooks.js'
 
 const CUSTOMER_UPLOAD_STATUSES = ['DRAFT', 'SUBMITTED', 'POLICY_VERIFICATION', 'DOCUMENTS_REQUIRED', 'DOCUMENT_REVIEW', 'INVESTIGATION', 'REOPENED']
 const REQUEST_DAYS = 7
@@ -58,6 +60,10 @@ function presentDocument(doc, names = {}, customer = false) {
     review_comment: doc.review_comment,
     review_assigned_at: doc.review_assigned_at,
     extracted_fields: doc.extracted_fields,
+    // Beacon AI Auto-Pilot attribution: decided automatically, or escalated to a person.
+    auto_handled_by_beacon: doc.reviewed_by === BEACON_AUTOPILOT_USER_ID,
+    ai_escalated_at: doc.ai_escalated_at ?? null,
+    ai_escalation_reason: doc.ai_escalation_reason ?? null,
   }
 }
 
@@ -151,6 +157,9 @@ export async function uploadDocument(ctx, claimId, file, fields) {
         reviewed_at: null,
         review_comment: null,
         rejection_reason: null,
+        // A new version is judged afresh by Beacon Auto-Pilot.
+        ai_escalated_at: null,
+        ai_escalation_reason: null,
         artifact_requirement_id: requirement?.id || previous.artifact_requirement_id,
       })
     } else {
@@ -220,6 +229,8 @@ export async function uploadDocument(ctx, claimId, file, fields) {
   // Beacon reads the new file (OCR fields + image forensics) in the background,
   // so the extraction and any fraud alert are ready when a reviewer opens it.
   queueUploadScan(ctx, result.document.id)
+  // Beacon AI Auto-Pilot reviews routine documents (when lifecycle triggers are on); it shares the scan above.
+  queueAutopilotForClaim(ctx, claimId, 'DOCUMENT_UPLOADED')
   return result
 }
 
@@ -272,7 +283,8 @@ export async function reviewQueue(ctx, query) {
   const claimIds = (await ctx.db.findMany('claims', { where: { $and: [scope, { status: { ne: 'DRAFT' } }] }, columns: ['id'] })).map((c) => c.id)
   const where = { claim_id: { in: claimIds }, status: query.status, doc_type: query.docType }
   if (query.mine === 'true') where.reviewer_id = ctx.actor.id
-  const orderBy = query.status === 'PENDING_REVIEW' ? [['received_at', 'asc']] : [['reviewed_at', 'desc']]
+  // Documents Beacon Auto-Pilot escalated (fraud indicator or unreadable) come first, newest escalation on top.
+  const orderBy = query.status === 'PENDING_REVIEW' ? [['ai_escalated_at', 'desc'], ['received_at', 'asc']] : [['reviewed_at', 'desc']]
   const [docs, total] = await Promise.all([
     ctx.db.findMany('documents', { where, orderBy, ...toOffset(query) }),
     ctx.db.count('documents', where),
@@ -315,7 +327,12 @@ async function beaconFlaggedIrrelevant(t, documentId) {
   return rows.length > 0
 }
 
-export async function reviewDocument(ctx, documentId, { decision, comment, rejectionReason, beaconFlag = null }) {
+/**
+ * `followUpOwnerId` (default: the reviewer) owns the follow-up task a rejection
+ * creates. Beacon Auto-Pilot passes the claim's document reviewer, or null for
+ * the Document Review queue, so the task never sits with the service account.
+ */
+export async function reviewDocument(ctx, documentId, { decision, comment, rejectionReason, beaconFlag = null }, { followUpOwnerId = ctx.actor.id } = {}) {
   requirePermission(ctx.actor, 'documents.review')
   return ctx.db.tx(async (t) => {
     const doc = await t.findOne('documents', { id: documentId }, { forUpdate: true })
@@ -411,9 +428,9 @@ export async function reviewDocument(ctx, documentId, { decision, comment, rejec
         title: `Follow up rejected ${humanize(doc.doc_type)}: ${doc.file_name}`,
         description: `Rejected because: ${rejectionReason}. Confirm the claimant uploads a replacement.`,
         type: 'DOCUMENT_FOLLOW_UP',
-        owner_user_id: ctx.actor.id,
+        owner_user_id: followUpOwnerId,
         owner_role: ROLES.DOCUMENT_REVIEWER,
-        claimed_at: now,
+        claimed_at: followUpOwnerId ? now : null,
         source_stage: claim.stage,
         priority: claim.priority,
         due_at: due,

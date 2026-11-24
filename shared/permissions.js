@@ -110,6 +110,13 @@ export const PERMISSIONS = {
   'ai.denialLetterApprove': [MGR],
   'ai.payeeCheck': [COM, ADJ, MGR, PAY],
   'ai.subrogation': [ADJ, MGR],
+
+  // Beacon AI Auto-Pilot: everyone whose queue it works sees its metrics and
+  // attribution; operations leads run a sweep; Claims Managers and Compliance
+  // switch it on or off.
+  'autopilot.view': [COM, MGR, DR, ADJ, CS, PAY],
+  'autopilot.run': [COM, MGR, DR, CS],
+  'autopilot.manage': [MGR, CS],
 }
 
 /** Tabs of the unified Claim Details workspace and the roles that may see them. */

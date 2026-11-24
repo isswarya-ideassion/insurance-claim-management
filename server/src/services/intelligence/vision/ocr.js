@@ -218,20 +218,36 @@ const GRID = 8
  * 0.33, which keeps the descriptor stable when the same character appears at
  * different sizes. A hard resample loses thin strokes at small scales.
  */
+/**
+ * The pixel span [start, end) that grid cell `g` covers along a side of
+ * `size` pixels. Ceil boundaries reproduce "pixel p belongs to cell
+ * floor(p / size * GRID)" exactly when size >= GRID. When the side is shorter
+ * than the grid (a hyphen 4 px tall, a full stop), some cells would own no
+ * pixel and read as empty, turning a solid bar into stripes that match no
+ * template; such a cell samples its nearest pixel instead.
+ */
+function cellSpan(g, size) {
+  const start = Math.ceil((g * size) / GRID)
+  const end = Math.ceil(((g + 1) * size) / GRID)
+  if (end > start) return [start, end]
+  const nearest = Math.min(size - 1, Math.floor(((g + 0.5) * size) / GRID))
+  return [nearest, nearest + 1]
+}
+
 export function glyphDescriptor(binary, width, box) {
-  const cells = new Float32Array(GRID * GRID)
-  const counts = new Float32Array(GRID * GRID)
-  for (let y = 0; y < box.h; y += 1) {
-    const gy = Math.min(GRID - 1, Math.floor((y / box.h) * GRID))
-    for (let x = 0; x < box.w; x += 1) {
-      const gx = Math.min(GRID - 1, Math.floor((x / box.w) * GRID))
-      const cell = gy * GRID + gx
-      counts[cell] += 1
-      if (binary[(box.y + y) * width + (box.x + x)]) cells[cell] += 1
+  const descriptor = new Float32Array(GRID * GRID + 1)
+  for (let gy = 0; gy < GRID; gy += 1) {
+    const [y0, y1] = cellSpan(gy, box.h)
+    for (let gx = 0; gx < GRID; gx += 1) {
+      const [x0, x1] = cellSpan(gx, box.w)
+      let ink = 0
+      for (let y = y0; y < y1; y += 1) {
+        const row = (box.y + y) * width + box.x
+        for (let x = x0; x < x1; x += 1) if (binary[row + x]) ink += 1
+      }
+      descriptor[gy * GRID + gx] = ink / ((y1 - y0) * (x1 - x0))
     }
   }
-  const descriptor = new Float32Array(GRID * GRID + 1)
-  for (let i = 0; i < cells.length; i += 1) descriptor[i] = counts[i] ? cells[i] / counts[i] : 0
   // Aspect ratio separates shapes that normalise to similar grids — most
   // usefully '.' and ':' from 'O', and '-' from '_'.
   descriptor[GRID * GRID] = Math.min(2, box.w / box.h)
@@ -285,6 +301,31 @@ let cachedTemplates = null
 const defaultTemplates = () => (cachedTemplates ||= builtinTemplates())
 
 /**
+ * Joins blobs stacked one above the other into a single glyph. A colon is two
+ * separate dots; classified one by one it reads as "..". The templates for
+ * such characters are built from the merged box (see builtinTemplates), so the
+ * merged blob is what the classifier expects. Boxes are in reading order.
+ */
+function mergeStacked(boxes) {
+  const out = []
+  for (const box of boxes) {
+    const prev = out[out.length - 1]
+    if (prev) {
+      const overlap = Math.min(prev.x + prev.w, box.x + box.w) - Math.max(prev.x, box.x)
+      const stacked = overlap >= 0.5 * Math.min(prev.w, box.w) && (box.y >= prev.y + prev.h || prev.y >= box.y + box.h)
+      if (stacked) {
+        const x = Math.min(prev.x, box.x)
+        const y = Math.min(prev.y, box.y)
+        out[out.length - 1] = { x, y, w: Math.max(prev.x + prev.w, box.x + box.w) - x, h: Math.max(prev.y + prev.h, box.y + box.h) - y, pixels: (prev.pixels || 0) + (box.pixels || 0) }
+        continue
+      }
+    }
+    out.push(box)
+  }
+  return out
+}
+
+/**
  * Reads text from a binarised page.
  *
  * @returns {{text: string, lines: object[], meanConfidence: number}}
@@ -308,7 +349,7 @@ export function recognize(binary, width, height, { templates = defaultTemplates(
     const words = []
     for (const word of line.words) {
       let text = ''
-      for (const box of word) {
+      for (const box of mergeStacked(word)) {
         const descriptor = glyphDescriptor(binary, width, box)
         let best = null
         let bestDistance = Infinity

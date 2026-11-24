@@ -56,6 +56,17 @@ const schema = z.object({
   // Bearer key for a hosted Ollama (ollama.com) or a self-hosted Ollama behind an authenticating proxy.
   OLLAMA_API_KEY: z.string().optional(),
 
+  // Beacon AI Auto-Pilot (AI_PROVIDER=beacon only): straight-through processing
+  // of routine intake, document review and adjuster pre-work, with exceptions
+  // left for people. AI_AUTOPILOT_ENABLED is the starting state and also turns
+  // on the lifecycle triggers (submit, upload, status change); the control
+  // bar's toggle overrides the starting state once it is used.
+  AI_AUTOPILOT_ENABLED: flag(false),
+  // Highest estimated loss (INR) a claim may have for coverage and routing to go straight through.
+  AI_AUTOPILOT_STP_MAX_LOSS: z.coerce.number().min(0).default(25_000),
+  // Claims or documents handled per stage in one sweep.
+  AI_AUTOPILOT_BATCH_SIZE: z.coerce.number().int().min(1).max(500).default(25),
+
   // Scheduled jobs called by a scheduler (Vercel Cron) instead of the in-process timer.
   // GET /api/internal/cron/jobs with "Authorization: Bearer <CRON_SECRET>"; unset disables the endpoint.
   CRON_SECRET: z.string().min(16).optional(),

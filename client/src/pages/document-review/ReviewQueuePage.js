@@ -7,6 +7,8 @@ import { useApiQuery, useAction } from '@/hooks/useApi.js'
 import { useListParams } from '@/hooks/useListParams.js'
 import { useAuth } from '@/context/AuthContext.js'
 import { PageHeader } from '@/components/common/PageHeader.js'
+import { AutopilotControlBar } from '@/components/automation/AutopilotControlBar.js'
+import { AiEscalatedBadge, AutoHandledBadge } from '@/components/automation/BeaconBadges.js'
 import { MotionPage } from '@/components/common/MotionPage.js'
 import { DataTable, Pagination } from '@/components/common/DataTable.js'
 import { ClaimStatusBadge, PriorityBadge, StatusBadge } from '@/components/common/StatusBadge.js'
@@ -34,6 +36,8 @@ export default function ReviewQueuePage() {
         <div className="min-w-[12rem]">
           <p className="font-medium">{d.file_name}</p>
           <p className="text-xs text-muted-foreground">{humanize(d.doc_type)} · v{d.version}</p>
+          {d.auto_handled_by_beacon && <AutoHandledBadge className="mt-1" />}
+          {d.status === 'PENDING_REVIEW' && d.ai_escalated_at && <AiEscalatedBadge className="mt-1" reason={d.ai_escalation_reason} label={/forensics/i.test(d.ai_escalation_reason || '') ? 'Fraud alert — review first' : 'AI-escalated'} />}
         </div>
       ),
     },
@@ -80,6 +84,7 @@ export default function ReviewQueuePage() {
   return (
     <MotionPage>
       <PageHeader title="Document review queue" description="Verify claimant documents. Rejections notify the claimant and create a follow-up task automatically." />
+      <AutopilotControlBar onSweep={() => query.reload()} />
       <div className="rounded-xl border bg-card shadow-sm">
         <div className="flex flex-wrap items-center gap-3 border-b p-4">
           <div className="w-48">

@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge.js'
 import { Button } from '@/components/ui/button.js'
 import { formatDate, formatDateTime, formatMoney } from '@/utils/format.js'
 import { cn } from '@/lib/utils.js'
-import { UnnecessaryDocumentNotice, isIrrelevant } from '@/components/automation/UnnecessaryDocumentNotice.js'
+import { UnnecessaryDocumentNotice, groupIrrelevantAlerts, groupLabel, isIrrelevant } from '@/components/automation/UnnecessaryDocumentNotice.js'
 
 /*
  * Beacon AI Image Forensics Alert — local, zero-cost checks on image documents:
@@ -73,18 +73,20 @@ function AlertItem({ alert, high }) {
 export function ImageForensicsAlert({ alerts, accepted, onAccept, pending, documentStatus, onRejected, className }) {
   if (!alerts?.length) return null
   const fraud = alerts.filter((a) => !isIrrelevant(a))
-  const unrelated = alerts.filter(isIrrelevant)
+  // The same unrelated file in several slots gets one notice listing the slots.
+  const unrelated = groupIrrelevantAlerts(alerts.filter(isIrrelevant))
+  const named = unrelated.length > 1 || fraud.length > 0 || unrelated.some((g) => g.documentIds.length > 1)
   return (
     <div className={cn('space-y-3', className)}>
       {fraud.length > 0 && <FraudAlertBanner alerts={fraud} accepted={accepted} onAccept={onAccept} pending={pending} />}
-      {unrelated.map((a) => (
+      {unrelated.map((g) => (
         <UnnecessaryDocumentNotice
-          key={a.documentId}
-          documentId={a.documentId}
-          fileName={unrelated.length > 1 || fraud.length > 0 ? a.fileName : null}
-          detail={a.relevanceDetail}
-          notes={a.evidence.filter((e) => e.startsWith('Also noted'))}
-          documentStatus={documentStatus}
+          key={g.key}
+          documentIds={g.documentIds}
+          fileName={named ? groupLabel(g) : null}
+          detail={g.detail}
+          notes={g.notes}
+          documentStatus={g.documentIds.length === 1 ? documentStatus : undefined}
           onRejected={onRejected}
         />
       ))}

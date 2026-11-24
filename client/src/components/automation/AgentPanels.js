@@ -218,8 +218,8 @@ function TriageApply({ run, apply, pending }) {
       )}
       {can('claims.assignAdjuster') && !done.includes('adjuster') && r.candidates?.length > 0 && (
         <div className="flex flex-wrap items-end gap-2">
-          <FormField label="Adjuster" className="w-64">
-            <Select value={adjusterId} onValueChange={setAdjusterId} options={r.candidates.map((c) => ({ value: c.id, label: `${c.name} (${c.openClaims} open)${c.id === r.recommendedAdjuster?.id ? ' · suggested' : ''}` }))} />
+          <FormField label="Adjuster" className="min-w-[260px] max-w-md flex-1 sm:flex-none">
+            <Select value={adjusterId} onValueChange={setAdjusterId} triggerClassName="min-w-[260px] justify-between text-left" options={r.candidates.map((c) => ({ value: c.id, label: `${c.name} (${c.openClaims} open)${c.id === r.recommendedAdjuster?.id ? ' · suggested' : ''}` }))} />
           </FormField>
           <Button size="sm" variant="accent" disabled={!adjusterId} loading={pending} onClick={() => apply({ parts: ['adjuster'], adjusterId }, 'Adjuster assigned')}>
             Assign adjuster

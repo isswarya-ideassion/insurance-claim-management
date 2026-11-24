@@ -27,6 +27,8 @@ describe('scheduled jobs endpoint (Vercel Cron)', () => {
       slaEscalation: 'ok',
       fraudRings: 'ok',
       anomalyScoring: 'ok',
+      // A no-op here: tests run without the Beacon provider.
+      beaconAutopilot: 'ok',
       partitions: 'ok',
     })
   })

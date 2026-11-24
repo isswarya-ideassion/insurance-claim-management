@@ -4,6 +4,7 @@ import { runDeadlineReminderSweep } from './modules/automation/reminders.service
 import { runSlaSweep } from './services/sla.service.js'
 import { detectRings } from './services/intelligence/fraudRing.service.js'
 import { scoreAllClaims } from './services/intelligence/model.service.js'
+import { runScheduledAutopilot } from './modules/automation/autopilot.service.js'
 
 /** Keeps monthly audit and AI-run partitions three months ahead (rows never land in the default partition). */
 export async function ensurePartitions(deps) {
@@ -27,6 +28,9 @@ const JOBS = {
   slaEscalation: runSlaSweep,
   fraudRings: runRingDetection,
   anomalyScoring: runAnomalyScoring,
+  // After ring detection and scoring, so the fraud shield sees fresh rings and anomaly bands.
+  // A no-op unless the auto-pilot is switched on and AI_PROVIDER=beacon.
+  beaconAutopilot: runScheduledAutopilot,
   partitions: ensurePartitions,
 }
 

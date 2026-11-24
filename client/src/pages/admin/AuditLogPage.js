@@ -12,10 +12,10 @@ import { useListParams } from '@/hooks/useListParams.js'
 import { PageHeader } from '@/components/common/PageHeader.js'
 import { MotionPage } from '@/components/common/MotionPage.js'
 import { DataTable, Pagination } from '@/components/common/DataTable.js'
-import { SearchInput } from '@/components/common/SearchInput.js'
+import { DebouncedInput, SearchInput } from '@/components/common/SearchInput.js'
 import { EmptyState } from '@/components/common/States.js'
 import { KeyValue } from '@/components/common/FormField.js'
-import { Input, Label } from '@/components/ui/input.js'
+import { Label } from '@/components/ui/input.js'
 import { Select } from '@/components/ui/select.js'
 import { SheetContent } from '@/components/ui/dialog.js'
 import { formatDateTime, todayInput } from '@/utils/format.js'
@@ -59,8 +59,8 @@ export default function AuditLogPage() {
           <SearchInput value={params.action || ''} onChange={(action) => setParams({ action })} placeholder="Filter by action (e.g. PAYMENT)" className="w-64" label="Action" />
           <div className="w-40"><Select aria-label="Actor type" allowClear placeholder="All actors" value={params.actorType || ''} onValueChange={(actorType) => setParams({ actorType })} options={['USER', 'AGENT', 'SYSTEM'].map((t) => ({ value: t, label: humanize(t) }))} /></div>
           <div className="w-48"><Select aria-label="Entity type" allowClear placeholder="All entities" value={params.entityType || ''} onValueChange={(entityType) => setParams({ entityType })} options={ENTITY_TYPES.map((e) => ({ value: e, label: humanize(e) }))} /></div>
-          <div className="space-y-1"><Label htmlFor="a-from" className="text-xs text-muted-foreground">From</Label><Input id="a-from" type="date" max={params.to || todayInput()} value={params.from || ''} onChange={(e) => setParams({ from: e.target.value })} className="h-9 w-40" /></div>
-          <div className="space-y-1"><Label htmlFor="a-to" className="text-xs text-muted-foreground">To</Label><Input id="a-to" type="date" min={params.from || undefined} max={todayInput()} value={params.to || ''} onChange={(e) => setParams({ to: e.target.value })} className="h-9 w-40" /></div>
+          <div className="space-y-1"><Label htmlFor="a-from" className="text-xs text-muted-foreground">From</Label><DebouncedInput id="a-from" type="date" max={params.to || todayInput()} value={params.from || ''} onValueChange={(from) => setParams({ from })} className="h-9 w-40" /></div>
+          <div className="space-y-1"><Label htmlFor="a-to" className="text-xs text-muted-foreground">To</Label><DebouncedInput id="a-to" type="date" min={params.from || undefined} max={todayInput()} value={params.to || ''} onValueChange={(to) => setParams({ to })} className="h-9 w-40" /></div>
         </div>
         <DataTable
           rows={query.data}

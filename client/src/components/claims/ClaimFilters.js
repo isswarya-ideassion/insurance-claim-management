@@ -2,8 +2,10 @@ import { useEffect, useState } from 'react'
 import { RotateCcw } from 'lucide-react'
 import { ALL_STATUSES, STATUS_LABELS, LIFECYCLE_STAGES, STAGE_LABELS, SEGMENTS, POLICY_TYPES, POLICY_TYPE_LABELS, PRIORITIES, humanize } from '@shared/constants.js'
 import { claimsService } from '@/services/claimsService.js'
+import { withRequestSignal } from '@/services/apiClient.js'
 import { Select } from '@/components/ui/select.js'
-import { Input, Label } from '@/components/ui/input.js'
+import { Label } from '@/components/ui/input.js'
+import { DebouncedInput } from '@/components/common/SearchInput.js'
 import { Switch } from '@/components/ui/misc.js'
 import { todayInput } from '@/utils/format.js'
 import { Button } from '@/components/ui/button.js'
@@ -14,13 +16,20 @@ export function ClaimFilters({ params, setParams, reset, showAssignee = true, st
 
   useEffect(() => {
     if (!showAssignee) return
-    Promise.all([claimsService.assignees('CLAIMS_OPS_MANAGER'), claimsService.assignees('ADJUSTER'), claimsService.assignees('DOCUMENT_REVIEWER')])
+    let cancelled = false
+    const controller = new AbortController()
+    withRequestSignal(controller.signal, () => Promise.all([claimsService.assignees('CLAIMS_OPS_MANAGER'), claimsService.assignees('ADJUSTER'), claimsService.assignees('DOCUMENT_REVIEWER')]))
       .then((lists) => {
+        if (cancelled) return
         const seen = new Map()
         lists.flat().forEach((u) => seen.set(u.id, u))
         setAssignees([...seen.values()].sort((a, b) => a.full_name.localeCompare(b.full_name)))
       })
-      .catch(() => setAssignees([]))
+      .catch((err) => !cancelled && err?.name !== 'AbortError' && setAssignees([]))
+    return () => {
+      cancelled = true
+      controller.abort()
+    }
   }, [showAssignee])
 
   return (
@@ -48,11 +57,11 @@ export function ClaimFilters({ params, setParams, reset, showAssignee = true, st
         <div className="flex items-end gap-2">
           <div className="space-y-1">
             <Label htmlFor="filter-from" className="text-xs text-muted-foreground">Submitted from</Label>
-            <Input id="filter-from" type="date" max={params.to || todayInput()} value={params.from || ''} onChange={(e) => setParams({ from: e.target.value })} className="h-8 w-40" />
+            <DebouncedInput id="filter-from" type="date" max={params.to || todayInput()} value={params.from || ''} onValueChange={(from) => setParams({ from })} className="h-8 w-40" />
           </div>
           <div className="space-y-1">
             <Label htmlFor="filter-to" className="text-xs text-muted-foreground">to</Label>
-            <Input id="filter-to" type="date" min={params.from || undefined} max={todayInput()} value={params.to || ''} onChange={(e) => setParams({ to: e.target.value })} className="h-8 w-40" />
+            <DebouncedInput id="filter-to" type="date" min={params.from || undefined} max={todayInput()} value={params.to || ''} onValueChange={(to) => setParams({ to })} className="h-8 w-40" />
           </div>
         </div>
         <label className="flex items-center gap-2 text-sm">

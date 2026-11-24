@@ -25,6 +25,11 @@ export const listRemindersQuery = paginationSchema.extend({
   type: z.enum(['DEADLINE_APPROACHING', 'DEADLINE_OVERDUE', 'MISSING_DOCUMENTS']).optional(),
 })
 
+// Beacon AI Auto-Pilot
+export const autopilotRunSchema = z.object({ claimId: z.string().uuid().optional() }).strict()
+export const autopilotStateSchema = z.object({ enabled: z.boolean() }).strict()
+export const autopilotSummaryQuery = z.object({ days: z.coerce.number().int().min(1).max(365).default(30) })
+
 // Claim agents. The body of an apply request is validated by each agent.
 export const agentParams = z.object({ id: z.string().uuid(), agent: z.enum(Object.keys(CLAIM_AGENTS)) })
 export const applyAgentSchema = z.record(z.string(), z.unknown())

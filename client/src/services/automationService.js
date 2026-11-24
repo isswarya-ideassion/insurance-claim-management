@@ -8,8 +8,14 @@ export const customersService = {
     api.blob(`/customers/${customerId}/documents/${documentId}/download`, { disposition }),
 }
 
+const ensureInflight = new Map()
+
 export const automationService = {
   status: () => api.get('/automation/status').then((r) => r.data),
+  // Beacon AI Auto-Pilot (straight-through processing; exceptions stay with people)
+  autopilotSummary: (params) => api.get('/automation/autopilot/summary', params).then((r) => r.data),
+  setAutopilotEnabled: (enabled) => api.put('/automation/autopilot/state', { enabled }).then((r) => r.data),
+  runAutopilot: (body = {}) => api.post('/automation/autopilot/run', body).then((r) => r.data),
   documentChecklist: (claimId) => api.get(`/claims/${claimId}/automation/document-checklist`).then((r) => r.data),
   createReminderDraft: (claimId, body = {}) => api.post(`/claims/${claimId}/automation/reminder-drafts`, body).then((r) => r.data),
   claimReminders: (claimId) => api.get(`/claims/${claimId}/automation/reminders`).then((r) => r.data),
@@ -19,7 +25,13 @@ export const automationService = {
   runReminderSweep: () => api.post('/automation/reminders/sweep').then((r) => r.data),
   extract: (documentId) => api.post(`/documents/${documentId}/extractions`).then((r) => r.data),
   // Scans the document's current version if it has no run yet, then returns the latest run.
-  ensureExtraction: (documentId) => api.post(`/documents/${documentId}/extractions/ensure`).then((r) => r.data),
+  // Auto-triggered from effects, so concurrent calls for one document share a single POST.
+  ensureExtraction: (documentId) => {
+    if (!ensureInflight.has(documentId)) {
+      ensureInflight.set(documentId, api.post(`/documents/${documentId}/extractions/ensure`).then((r) => r.data).finally(() => ensureInflight.delete(documentId)))
+    }
+    return ensureInflight.get(documentId)
+  },
   extractions: (claimId) => api.get(`/claims/${claimId}/automation/extractions`).then((r) => r.data),
   applyExtraction: (runId, fields) => api.post(`/automation/extractions/${runId}/apply`, { fields }).then((r) => r.data),
   discardExtraction: (runId) => api.post(`/automation/extractions/${runId}/discard`).then((r) => r.data),

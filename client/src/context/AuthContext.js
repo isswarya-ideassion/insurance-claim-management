@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { ROLE_PRIORITY } from '@shared/constants.js'
 import { can as canPermission, hasAnyRole } from '@shared/permissions.js'
 import { authService } from '@/services/authService.js'
-import { api, configureApiClient } from '@/services/apiClient.js'
+import { api, configureApiClient, withRequestSignal } from '@/services/apiClient.js'
 import { healthService } from '@/services/workflowService.js'
 
 const AuthContext = createContext(null)
@@ -25,14 +25,17 @@ export function AuthProvider({ children }) {
     setStatus('anonymous')
   }, [])
 
-  const loadProfile = useCallback(async () => {
+  /** `signal`/`isCancelled` come from the bootstrap effect; a cancelled load changes nothing. */
+  const loadProfile = useCallback(async ({ signal, isCancelled = () => false } = {}) => {
     const token = await authService.getAccessToken()
+    if (isCancelled()) return null
     if (!token) {
       clear()
       return null
     }
     try {
-      const res = await api.get('/auth/me')
+      const res = await api.get('/auth/me', undefined, { signal })
+      if (isCancelled()) return null
       const profile = res.data
       setUser(profile)
       const stored = localStorage.getItem(ACTIVE_ROLE_KEY)
@@ -40,6 +43,8 @@ export function AuthProvider({ children }) {
       setStatus('authenticated')
       return profile
     } catch (err) {
+      // A cancelled request says nothing about the session: never sign out for it.
+      if (err?.name === 'AbortError' || isCancelled()) return null
       await authService.signOut().catch(() => {})
       clear()
       throw err
@@ -54,11 +59,17 @@ export function AuthProvider({ children }) {
         clear()
       },
     })
-    healthService
-      .check()
-      .then(setServer)
-      .catch(() => setServer('unreachable'))
-    loadProfile().catch(() => {})
+    let cancelled = false
+    const controller = new AbortController()
+    const isCancelled = () => cancelled
+    withRequestSignal(controller.signal, () => healthService.check())
+      .then((s) => !cancelled && setServer(s))
+      .catch((err) => !cancelled && err?.name !== 'AbortError' && setServer('unreachable'))
+    loadProfile({ signal: controller.signal, isCancelled }).catch(() => {})
+    return () => {
+      cancelled = true
+      controller.abort()
+    }
   }, [loadProfile, clear])
 
   const login = useCallback(

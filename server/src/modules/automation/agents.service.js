@@ -396,7 +396,9 @@ Using the claim facts, the adjuster's evaluation and the comparable settled clai
 const reserveAgent = {
   async prepare(t, ctx, claim) {
     if (claim.status !== 'INVESTIGATION') throw businessRule('INVALID_STAGE', 'Reserve recommendations are made during investigation')
-    if (claim.assigned_adjuster_id !== ctx.actor.id) throw forbidden('Only the assigned adjuster can request a reserve recommendation')
+    // Beacon Auto-Pilot may pre-compute it for the assigned adjuster, who still accepts or overrides it.
+    const precomputed = ctx.actor.autopilot && claim.assigned_adjuster_id
+    if (!precomputed && claim.assigned_adjuster_id !== ctx.actor.id) throw forbidden('Only the assigned adjuster can request a reserve recommendation')
     const lines = COVERAGE_LINES[claim.claim_type] || [defaultCoverageLine(claim.claim_type)]
     const [policy, evaluation, current, comparables] = await Promise.all([
       policyForClaim(t, claim),
@@ -903,8 +905,24 @@ export async function runAgent(ctx, claimId, agent) {
   const claim = await loadAccessibleClaim(ctx.db, ctx.actor, claimId)
   requireTab(ctx.actor, claim, def.tab)
   requireNotOwnClaim(ctx.actor, claim)
-  if (!ctx.ai.configured) throw aiNotConfigured()
+  const run = await executeAgent(ctx, claim, agent)
+  return { run: presentAgentRun(run, ctx.actor), disclaimer: AI_DISCLAIMER }
+}
 
+/**
+ * Runs an agent for Beacon AI Auto-Pilot and returns the stored run. No
+ * person's claim scope applies (the auto-pilot works the whole book), but the
+ * agent's own stage rules still do, and the run is recorded and audited
+ * exactly like one a person started. Its suggestion is not applied here.
+ */
+export async function precomputeAgentRun(ctx, claim, agent) {
+  definition(agent)
+  if (!ctx.actor?.autopilot) throw forbidden('Only Beacon Auto-Pilot pre-computes agent runs')
+  return executeAgent(ctx, claim, agent)
+}
+
+async function executeAgent(ctx, claim, agent) {
+  if (!ctx.ai.configured) throw aiNotConfigured()
   const spec = await AGENTS[agent].prepare(ctx.db, ctx, claim)
   const inputText = JSON.stringify(spec.input, null, 2)
   const { base, result } = await runAi(ctx, {
@@ -935,12 +953,12 @@ export async function runAgent(ctx, claimId, agent) {
       entityType: 'ai_run',
       entityId: inserted.id,
       claimId: claim.id,
-      metadata: { agent, requestedBy: ctx.actor.id, promptVersion: inserted.prompt_version },
+      metadata: { agent, requestedBy: ctx.actor.id, promptVersion: inserted.prompt_version, ...(ctx.actor.autopilot ? { trigger: 'AUTOPILOT' } : {}) },
     })
     return inserted
   })
   logRun(ctx, run)
-  return { run: presentAgentRun(run, ctx.actor), disclaimer: AI_DISCLAIMER }
+  return run
 }
 
 export async function listAgentRuns(ctx, claimId, agent) {

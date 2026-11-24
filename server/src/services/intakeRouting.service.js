@@ -38,6 +38,32 @@ export async function pickIntakeOwner(t, claim) {
 }
 
 /**
+ * The active adjuster with the lightest load, for straight-through routing:
+ * fewest open claims, then fewest high-priority open claims, then fewest open
+ * tasks, then alphabetical (stable). Never the claimant, and never someone who
+ * already handled the claim in another role (owner or document reviewer), so
+ * the adjuster is independent of the people who checked it in.
+ */
+export async function pickLeastLoadedAdjuster(t, claim) {
+  const rows = await t.query(
+    `select u.id, u.full_name,
+            (select count(*) from public.claims c
+              where c.assigned_adjuster_id = u.id and c.status = any($2::text[]))::int as open_claims,
+            (select count(*) from public.claims c
+              where c.assigned_adjuster_id = u.id and c.status = any($2::text[]) and c.priority in ('HIGH', 'URGENT'))::int as high_priority_open,
+            (select count(*) from public.tasks k
+              where k.owner_user_id = u.id and k.status in ('OPEN', 'IN_PROGRESS'))::int as open_tasks
+       from public.users u
+       join public.user_roles r on r.user_id = u.id and r.role_code = $1
+      where u.is_active and u.id <> all($3::uuid[])
+      order by open_claims, high_priority_open, open_tasks, u.full_name, u.id
+      limit 1`,
+    [ROLES.ADJUSTER, [...ACTIVE_STATUSES, 'ON_HOLD'], [claim.customer_id, claim.assigned_owner_id, claim.assigned_reviewer_id].filter(Boolean)],
+  )
+  return rows[0] || null
+}
+
+/**
  * Assigns a newly submitted claim to a Claims Operations Manager, who owns it
  * through intake, coverage, routing and payee verification. A claim created
  * on a client's behalf by a Claims Operations Manager stays with that person.

@@ -4,9 +4,26 @@ import * as ai from './ai-automation.service.js'
 import * as agents from './agents.service.js'
 import * as imageAlerts from './image-alerts.service.js'
 import * as autoExtraction from './auto-extraction.service.js'
+import * as autopilot from './autopilot.service.js'
 
 export async function status(req, res) {
   ok(res, ai.getAiStatus(req.ctx))
+}
+
+export async function autopilotSummary(req, res) {
+  ok(res, await autopilot.getAutopilotSummary(req.ctx, req.validatedQuery))
+}
+
+export async function autopilotState(req, res) {
+  ok(res, await autopilot.getAutopilotState(req.ctx))
+}
+
+export async function setAutopilotState(req, res) {
+  ok(res, await autopilot.setAutopilotEnabled(req.ctx, req.body))
+}
+
+export async function runAutopilot(req, res) {
+  ok(res, await autopilot.triggerAutopilotSweep(req.ctx, req.body))
 }
 
 export async function documentChecklist(req, res) {

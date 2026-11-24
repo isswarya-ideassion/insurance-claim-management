@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { ShieldAlert, UserPlus } from 'lucide-react'
+import { Bot, ShieldAlert, UserPlus } from 'lucide-react'
 import { CLAIM_TABS } from '@shared/permissions.js'
 import { POLICY_TYPE_LABELS } from '@shared/constants.js'
 import { useAuth } from '@/context/AuthContext.js'
@@ -19,6 +19,7 @@ import { ComplianceTab } from './workspace/ComplianceTab.js'
 import { ActivityTab } from './workspace/ActivityTab.js'
 import { AutomationTab } from './workspace/AutomationTab.js'
 import { RecoveryTab } from './workspace/RecoveryTab.js'
+import { AiEscalatedBadge, AutoHandledBadge } from '@/components/automation/BeaconBadges.js'
 import { formatMoney, formatRelative } from '@/utils/format.js'
 
 const TAB_COMPONENTS = {
@@ -45,6 +46,11 @@ export function ClaimWorkspace({ detail, reload }) {
   const active = tabs.some((t) => t.key === params.get('tab')) ? params.get('tab') : tabs[0]?.key
   const ownClaim = claim.customer_id === user.id
   const canAssign = !ownClaim && (can('claims.assign') || can('claims.assignAdjuster')) && !['CLOSED', 'WITHDRAWN', 'REJECTED', 'DRAFT', 'PAID'].includes(claim.status)
+  // Beacon AI Auto-Pilot attribution: routine steps it completed, and claim-level exceptions it raised.
+  const autopilot = detail.autopilot || []
+  const autoHandled = autopilot.filter((a) => a.outcome === 'AUTOMATED')
+  const escalated = autopilot.filter((a) => a.outcome === 'ESCALATED' && !a.document_id)
+  const adjusterByBeacon = Boolean(claim.assigned_adjuster_id) && autopilot.some((a) => a.action === 'AI_AUTOPILOT_ADJUSTER_ASSIGNED')
 
   return (
     <div>
@@ -60,6 +66,8 @@ export function ClaimWorkspace({ detail, reload }) {
                   <ShieldAlert className="size-3" /> Compliance hold
                 </span>
               )}
+              {autoHandled.length > 0 && <AutoHandledBadge title={`Beacon AI Auto-Pilot: ${[...new Set(autoHandled.map((a) => a.label))].join(', ')}`} />}
+              {escalated.length > 0 && <AiEscalatedBadge reason={escalated[0].reason} label="Human review: AI-escalated" />}
             </div>
             <p className="mt-1 text-sm text-muted-foreground">
               {POLICY_TYPE_LABELS[claim.claim_type]} · {detail.policy?.external_policy_no} · {claim.customer_name} · {formatMoney(claim.estimated_loss)}
@@ -68,7 +76,10 @@ export function ClaimWorkspace({ detail, reload }) {
             <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1 text-xs text-muted-foreground sm:grid-cols-4">
               <span>Owner: <strong className="font-medium text-foreground">{claim.assigned_owner_name || 'Unassigned'}</strong></span>
               <span>Reviewer: <strong className="font-medium text-foreground">{claim.assigned_reviewer_name || '—'}</strong></span>
-              <span>Adjuster: <strong className="font-medium text-foreground">{claim.assigned_adjuster_name || '—'}</strong></span>
+              <span>
+                Adjuster: <strong className="font-medium text-foreground">{claim.assigned_adjuster_name || '—'}</strong>
+                {adjusterByBeacon && <Bot className="ml-1 inline size-3.5 text-violet-600" aria-label="Assigned automatically by Beacon AI" />}
+              </span>
               <span className={claim.is_overdue ? 'font-medium text-red-700' : ''}>Due: {claim.due_date ? formatRelative(claim.due_date) : '—'}</span>
             </div>
           </div>

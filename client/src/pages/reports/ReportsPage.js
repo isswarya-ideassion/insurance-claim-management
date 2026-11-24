@@ -10,7 +10,8 @@ import { SectionCard } from '@/components/common/FormField.js'
 import { DataTable } from '@/components/common/DataTable.js'
 import { CardsSkeleton, ErrorState } from '@/components/common/States.js'
 import { ChartCard, SimpleBarChart, TrendAreaChart, rowsHeight } from '@/components/dashboard/Charts.js'
-import { Input, Label } from '@/components/ui/input.js'
+import { Label } from '@/components/ui/input.js'
+import { DebouncedInput } from '@/components/common/SearchInput.js'
 import { Select } from '@/components/ui/select.js'
 import { formatDate, formatMoney, humanize, toDateInput, todayInput } from '@/utils/format.js'
 
@@ -31,11 +32,11 @@ export default function ReportsPage() {
       <div className="mb-5 flex flex-wrap items-end gap-3 rounded-xl border bg-card p-4 shadow-sm">
         <div className="space-y-1">
           <Label htmlFor="r-from" className="text-xs text-muted-foreground">From</Label>
-          <Input id="r-from" type="date" max={params.to || todayInput()} value={params.from} onChange={(e) => setParams({ from: e.target.value })} className="h-9 w-44" />
+          <DebouncedInput id="r-from" type="date" max={params.to || todayInput()} value={params.from} onValueChange={(from) => setParams({ from })} className="h-9 w-44" />
         </div>
         <div className="space-y-1">
           <Label htmlFor="r-to" className="text-xs text-muted-foreground">To</Label>
-          <Input id="r-to" type="date" min={params.from || undefined} max={todayInput()} value={params.to} onChange={(e) => setParams({ to: e.target.value })} className="h-9 w-44" />
+          <DebouncedInput id="r-to" type="date" min={params.from || undefined} max={todayInput()} value={params.to} onValueChange={(to) => setParams({ to })} className="h-9 w-44" />
         </div>
         <div className="w-40 space-y-1">
           <Label className="text-xs text-muted-foreground">Group by</Label>

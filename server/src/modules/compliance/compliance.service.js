@@ -52,7 +52,8 @@ export async function complianceQueue(ctx, query) {
   }
   const where = { ...COMPLIANCE, status: { in: query.status?.length ? query.status : OPEN_COMPLIANCE_STATUSES } }
   const [rows, total] = await Promise.all([
-    ctx.db.findMany('reviews', { where, orderBy: [['hold_active', 'desc'], ['created_at', 'asc']], ...toOffset(query) }),
+    // Holds first, then claims Beacon AI Auto-Pilot flagged for high combined fraud risk.
+    ctx.db.findMany('reviews', { where, orderBy: [['hold_active', 'desc'], ['ai_priority', 'desc'], ['created_at', 'asc']], ...toOffset(query) }),
     ctx.db.count('reviews', where),
   ])
   const claims = rows.length ? await ctx.db.findMany('claims', { where: { id: { in: rows.map((r) => r.claim_id) } } }) : []
