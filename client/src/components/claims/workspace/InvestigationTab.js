@@ -38,6 +38,7 @@ function EvaluationEditor({ evaluation, onSaved, onSubmitted }) {
 
   if (!form) return null
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
+  const denial = form.decision === 'DENY'
   const payload = () => ({
     checklist: form.checklist,
     findings: form.findings || null,
@@ -50,14 +51,58 @@ function EvaluationEditor({ evaluation, onSaved, onSubmitted }) {
   })
 
   async function save(silent = false) {
-    return action.run(async () => {
-      const updated = await evaluationsService.update(evaluation.id, payload())
-      onSaved?.(updated)
-      return updated
-    }, { success: silent ? undefined : 'Draft saved' })
+  if (!validateForm()) return null
+
+  return action.run(async () => {
+    const updated = await evaluationsService.update(evaluation.id, payload())
+    onSaved?.(updated)
+    return updated
+  }, { success: silent ? undefined : 'Draft saved' })
+}
+
+  const validateForm = () => {
+  if (!INVESTIGATION_CHECKLIST.every((item) => form.checklist[item.key])) {
+    toast.error('Complete all investigation checklist items.')
+    return false
   }
 
-  const denial = form.decision === 'DENY'
+  if (form.findings.trim().length < 20) {
+    toast.error('Findings must contain at least 20 characters.')
+    return false
+  }
+
+  if (!form.evidence.length || form.evidence.some((e) => e.description?.trim().length < 2)) {
+    toast.error('Add at least one valid evidence item.')
+    return false
+  }
+
+  if (form.lossValue === '' || Number(form.lossValue) < 0) {
+    toast.error('Enter a valid loss value.')
+    return false
+  }
+
+  if (form.liabilityPct === '' || Number(form.liabilityPct) < 0 || Number(form.liabilityPct) > 100) {
+    toast.error('Enter liability between 0 and 100.')
+    return false
+  }
+
+  if (!form.decision) {
+    toast.error('Select a decision.')
+    return false
+  }
+
+  if (!denial && (form.recommendedSettlement === '' || Number(form.recommendedSettlement) < 0)) {
+    toast.error('Enter recommended settlement.')
+    return false
+  }
+
+  if (!form.internalNotes.trim()) {
+    toast.error('Enter internal notes.')
+    return false
+  }
+
+  return true
+}
   return (
     <SectionCard
       title={`Evaluation v${evaluation.version_no} (draft)`}
@@ -76,7 +121,9 @@ function EvaluationEditor({ evaluation, onSaved, onSubmitted }) {
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="space-y-4">
           <div>
-            <p className="text-sm font-medium">Investigation checklist</p>
+            <p className="text-sm font-medium">
+            Investigation checklist <span className="text-red-600">*</span>
+          </p>
             <ul className="mt-2 space-y-2">
               {INVESTIGATION_CHECKLIST.map((item) => (
                 <li key={item.key} className="flex items-start gap-2.5">
@@ -86,11 +133,21 @@ function EvaluationEditor({ evaluation, onSaved, onSubmitted }) {
               ))}
             </ul>
           </div>
-          <FormField label="Findings" hint="At least 20 characters">
-            <Textarea value={form.findings} onChange={(e) => set('findings', e.target.value)} className="min-h-32" />
-          </FormField>
+          <FormField
+          label={<span>Findings <span className="text-red-600">*</span></span>}
+          hint="At least 20 characters"
+        >
+          <Textarea
+            required
+            value={form.findings}
+            onChange={(e) => set('findings', e.target.value)}
+            className="min-h-32"
+          />
+        </FormField>
           <div>
-            <p className="text-sm font-medium">Evidence</p>
+            <p className="text-sm font-medium">
+            Evidence <span className="text-red-600">*</span>
+          </p>
             <ul className="mt-2 space-y-2">
               {form.evidence.map((ev, i) => (
                 <li key={i} className="flex gap-2">
@@ -108,22 +165,22 @@ function EvaluationEditor({ evaluation, onSaved, onSubmitted }) {
         </div>
         <div className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
-            <FormField label="Loss value (₹)">
+            <FormField label={<span>Loss value (₹) <span className="text-red-600">*</span></span>}>
               <Input type="number" min="0" step="0.01" value={form.lossValue} onChange={(e) => set('lossValue', e.target.value)} />
             </FormField>
-            <FormField label="Liability (%)">
+            <FormField label={<span>Liability (%) <span className="text-red-600">*</span></span>}>
               <Input type="number" min="0" max="100" step="1" value={form.liabilityPct} onChange={(e) => set('liabilityPct', e.target.value)} />
             </FormField>
           </div>
-          <FormField label="Decision">
+          <FormField label={<span>Decision <span className="text-red-600">*</span></span>}>
             <Select value={form.decision} onValueChange={(v) => set('decision', v)} placeholder="Select decision" options={EVALUATION_DECISIONS.map((r) => ({ value: r, label: humanize(r) }))} />
           </FormField>
           {!denial && (
-            <FormField label="Recommended settlement (₹)" hint="After deductible and exclusions">
+            <FormField label={<span>Recommended settlement (₹) <span className="text-red-600">*</span></span>} hint="After deductible and exclusions">
               <Input type="number" min="0" step="0.01" value={form.recommendedSettlement} onChange={(e) => set('recommendedSettlement', e.target.value)} />
             </FormField>
           )}
-          <FormField label="Internal notes" hint="Never shown to the claimant">
+          <FormField label={<span>Internal notes <span className="text-red-600">*</span></span>} hint="Never shown to the claimant">
             <Textarea value={form.internalNotes} onChange={(e) => set('internalNotes', e.target.value)} />
           </FormField>
         </div>
@@ -147,10 +204,10 @@ function EvaluationEditor({ evaluation, onSaved, onSubmitted }) {
             </DialogHeader>
             <div className="space-y-3">
               <p className="text-sm">Recommended settlement: <strong>{formatMoney(form.recommendedSettlement)}</strong></p>
-              <FormField label="Reserve amount (₹)" required>
+              <FormField label={<span>Reserve amount (₹) <span className="text-red-600">*</span></span>}>
                 <Input type="number" min="0" step="0.01" value={reserve.amount} onChange={(e) => setReserve((r) => ({ ...r, amount: e.target.value }))} />
               </FormField>
-              <FormField label="Reserve justification">
+              <FormField label={<span>Reserve justification <span className="text-red-600">*</span></span>}>
                 <Textarea value={reserve.reason} onChange={(e) => setReserve((r) => ({ ...r, reason: e.target.value }))} />
               </FormField>
             </div>
@@ -159,7 +216,11 @@ function EvaluationEditor({ evaluation, onSaved, onSubmitted }) {
               <Button
                 variant="accent"
                 loading={action.pending}
-                disabled={!(Number(reserve.amount) > 0)}
+                disabled={
+                !(Number(reserve.amount) > 0) ||
+                !reserve.reason.trim() ||
+                Number(reserve.amount) < Number(form.recommendedSettlement)
+              }
                 onClick={async () => {
                   const r = await action.run(() => evaluationsService.submit(evaluation.id, { reserveAmount: Number(reserve.amount), reserveReason: reserve.reason || undefined }))
                   if (r) toast.success(r.reserve?.approval_status === 'POSTED' ? 'Evaluation submitted; reserve posted within your authority' : 'Evaluation submitted; reserve sent for manager review')
@@ -309,3 +370,4 @@ export function InvestigationTab({ detail, reload }) {
     </QueryState>
   )
 }
+
