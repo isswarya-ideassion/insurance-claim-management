@@ -13,6 +13,7 @@ import { lockClaim, transitionClaim } from '../../services/workflow.service.js'
 import { recordAudit } from '../../services/audit.service.js'
 import { notify, claimLink } from '../../services/notification.service.js'
 import { profileMap, nameOf } from '../../services/presenters.js'
+import { queueAutopilotForClaim } from '../automation/autopilot.hooks.js'
 
 const CLAIM_COLUMN = {
   OPERATIONS_OWNER: 'assigned_owner_id',
@@ -28,7 +29,14 @@ export async function listAssignments(ctx, claimId) {
   return rows.map((r) => ({ ...r, assignee_name: nameOf(names, r.assignee_id), assigned_by_name: nameOf(names, r.assigned_by) }))
 }
 
-export async function assignClaim(ctx, claimId, { assigneeId, assignmentRole, reason }) {
+export async function assignClaim(ctx, claimId, input) {
+  const result = await assignClaimTx(ctx, claimId, input)
+  // An adjuster assigned by a person starts investigation: Beacon pre-computes reserve and subrogation (when lifecycle triggers are on).
+  if (input.assignmentRole === 'ADJUSTER') queueAutopilotForClaim(ctx, claimId, 'ADJUSTER_ASSIGNED')
+  return result
+}
+
+async function assignClaimTx(ctx, claimId, { assigneeId, assignmentRole, reason }) {
   requirePermission(ctx.actor, assignmentRole === 'ADJUSTER' ? 'claims.assignAdjuster' : 'claims.assign')
   return ctx.db.tx(async (t) => {
     await loadAccessibleClaim(t, ctx.actor, claimId)

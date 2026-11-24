@@ -6,6 +6,9 @@ import {
   applyAgentSchema,
   applyExtractionSchema,
   approveReminderSchema,
+  autopilotRunSchema,
+  autopilotStateSchema,
+  autopilotSummaryQuery,
   discardAgentSchema,
   idParams,
   listRemindersQuery,
@@ -17,6 +20,12 @@ export function automationRoutes() {
   const byId = validate({ params: idParams })
 
   router.get('/automation/status', controller.status)
+
+  // Beacon AI Auto-Pilot: straight-through processing for routine work, exceptions to people
+  router.get('/automation/autopilot/summary', validate({ query: autopilotSummaryQuery }), controller.autopilotSummary)
+  router.get('/automation/autopilot/state', controller.autopilotState)
+  router.put('/automation/autopilot/state', validate({ body: autopilotStateSchema }), controller.setAutopilotState)
+  router.post('/automation/autopilot/run', validate({ body: autopilotRunSchema }), controller.runAutopilot)
 
   // Claim agents (PRD section 3): coverage, triage, reserve, denial letter, payee and subrogation
   router.get('/claims/:id/agents/:agent', validate({ params: agentParams }), controller.listAgentRuns)

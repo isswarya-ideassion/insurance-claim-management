@@ -9,6 +9,7 @@ import { DataTable, Pagination } from '@/components/common/DataTable.js'
 import { ClaimStatusBadge, PriorityBadge, StatusBadge } from '@/components/common/StatusBadge.js'
 import { EmptyState } from '@/components/common/States.js'
 import { Select } from '@/components/ui/select.js'
+import { AiEscalatedBadge } from '@/components/automation/BeaconBadges.js'
 import { formatMoney, formatRelative } from '@/utils/format.js'
 
 export default function ComplianceQueuePage() {
@@ -49,6 +50,7 @@ export default function ComplianceQueuePage() {
                 <div>
                   <Link to={`/claims/${r.claim_id}?tab=compliance`} className="font-medium text-primary hover:underline">{r.claim_number}</Link>
                   <div className="text-xs text-muted-foreground">{r.customer_name}</div>
+                  {r.ai_priority && <AiEscalatedBadge className="mt-1" label="AI-flagged priority" reason={r.ai_flag_reason} />}
                 </div>
               ),
             },

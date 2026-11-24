@@ -5,6 +5,7 @@ import { StepMark } from '@/components/common/StepMark.js'
 import { PRIORITIES, TASK_TYPES, STAFF_ROLES, ROLE_LABELS, humanize } from '@shared/constants.js'
 import { tasksService } from '@/services/workflowService.js'
 import { claimsService } from '@/services/claimsService.js'
+import { withRequestSignal } from '@/services/apiClient.js'
 import { useAction } from '@/hooks/useApi.js'
 import { useAuth } from '@/context/AuthContext.js'
 import { DataTable } from '@/components/common/DataTable.js'
@@ -135,12 +136,19 @@ export function CreateTaskDialog({ open, onOpenChange, claimId, onCreated }) {
   useEffect(() => {
     if (!open) return
     setForm({ title: '', description: '', type: 'GENERAL', priority: 'MEDIUM', blocking: false, ownerUserId: '', ownerRole: '', dueAt: '' })
-    Promise.all(STAFF_ROLES.map((r) => claimsService.assignees(r).catch(() => [])))
+    let cancelled = false
+    const controller = new AbortController()
+    withRequestSignal(controller.signal, () => Promise.all(STAFF_ROLES.map((r) => claimsService.assignees(r).catch(() => []))))
       .then((lists) => {
+        if (cancelled) return
         const map = new Map()
         lists.flat().forEach((u) => map.set(u.id, u))
         setStaff([...map.values()].sort((a, b) => a.full_name.localeCompare(b.full_name)))
       })
+    return () => {
+      cancelled = true
+      controller.abort()
+    }
   }, [open])
 
   const set = (k) => (v) => setForm((f) => ({ ...f, [k]: v?.target ? v.target.value : v }))

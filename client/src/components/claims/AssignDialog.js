@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { claimsService } from '@/services/claimsService.js'
+import { withRequestSignal } from '@/services/apiClient.js'
 import { useAction } from '@/hooks/useApi.js'
 import { useAuth } from '@/context/AuthContext.js'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog.js'
@@ -37,10 +38,16 @@ export function AssignDialog({ open, onOpenChange, claim, defaultRole = 'ADJUSTE
   useEffect(() => {
     const userRole = ROLE_OPTIONS.find((r) => r.value === role)?.userRole
     if (!open || !userRole) return
-    claimsService
-      .assignees(userRole)
-      .then((list) => setAssignees(list.filter((u) => u.id !== claim?.customer_id)))
-      .catch(() => setAssignees([]))
+    // Switching role or closing the dialog aborts the request and ignores any late answer.
+    let cancelled = false
+    const controller = new AbortController()
+    withRequestSignal(controller.signal, () => claimsService.assignees(userRole))
+      .then((list) => !cancelled && setAssignees(list.filter((u) => u.id !== claim?.customer_id)))
+      .catch((err) => !cancelled && err?.name !== 'AbortError' && setAssignees([]))
+    return () => {
+      cancelled = true
+      controller.abort()
+    }
   }, [role, open, claim?.customer_id])
 
   async function submit() {

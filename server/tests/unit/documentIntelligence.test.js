@@ -130,3 +130,11 @@ describe('document classifier', () => {
     expect(tokenize('Invoice 55231 dated 2026')).toEqual(['invoice', '#num', 'dated', '#num'])
   })
 })
+
+describe('buildTextPdf line breaks', () => {
+  it('keeps each line of the text as its own line (not "?" joined)', () => {
+    const out = extractPdfText(buildTextPdf('Dear claimant,\nYour claim HPC-2026-000101 was reviewed.\nTotal bill amount: Rs. 18,450.00'))
+    expect(out.text).not.toContain('?')
+    expect(out.text.split('\n').map((l) => l.trim())).toEqual(expect.arrayContaining(['Dear claimant,', 'Total bill amount: Rs. 18,450.00']))
+  })
+})

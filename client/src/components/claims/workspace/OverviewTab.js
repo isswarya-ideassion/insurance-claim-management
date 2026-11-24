@@ -16,6 +16,7 @@ import { Select } from '@/components/ui/select.js'
 import { PayeeIntake } from './PayeeIntake.js'
 import { formatDateTime, formatMoney, formatRelative, toDateTimeLocal, formatLocation } from '@/utils/format.js'
 import { TriageAgentCard } from '@/components/automation/AgentPanels.js'
+import { AutoHandledBadge, isBeaconActor } from '@/components/automation/BeaconBadges.js'
 
 
 /** Stage SLA clocks: running, paused (for example while the client owes documents) or stopped. */
@@ -82,6 +83,7 @@ function IntakePanel({ detail, reload }) {
                 <p className="flex items-center gap-2">
                   {coverage.result === 'COVERED' ? <CheckCircle2 className="size-4" /> : <XCircle className="size-4" />}
                   {humanize(coverage.result)} · {coverage.reviewed_by_name || 'System'} · {formatDateTime(coverage.created_at)}
+                  {isBeaconActor(coverage.reviewed_by) && <AutoHandledBadge />}
                 </p>
                 {coverage.notes && <p className="mt-1 text-xs text-muted-foreground">{coverage.notes}</p>}
                 {coverage.clause_refs?.length > 0 && <p className="mt-1 text-xs text-muted-foreground">Clauses: {coverage.clause_refs.join(', ')}</p>}

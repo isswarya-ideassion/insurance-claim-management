@@ -7,6 +7,7 @@ import { useApiQuery, useAction } from '@/hooks/useApi.js'
 import { useListParams } from '@/hooks/useListParams.js'
 import { useAuth } from '@/context/AuthContext.js'
 import { PageHeader } from '@/components/common/PageHeader.js'
+import { AutopilotControlBar } from '@/components/automation/AutopilotControlBar.js'
 import { MotionPage } from '@/components/common/MotionPage.js'
 import { DataTable, Pagination } from '@/components/common/DataTable.js'
 import { EmptyState } from '@/components/common/States.js'
@@ -46,6 +47,7 @@ export default function RemindersPage() {
           )
         }
       />
+      <AutopilotControlBar onSweep={() => query.reload()} />
       <div className="rounded-xl border bg-card shadow-sm">
         <div className="flex flex-wrap items-center gap-3 border-b p-4">
           <div className="w-full sm:w-52">

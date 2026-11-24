@@ -18,7 +18,10 @@ export function Select({ value, onValueChange, placeholder, options, className, 
           triggerClassName,
         )}
       >
-        <SelectPrimitive.Value placeholder={placeholder} />
+        {/* One line: a long label is truncated rather than wrapping the trigger. */}
+        <span className="min-w-0 flex-1 truncate whitespace-nowrap text-left">
+          <SelectPrimitive.Value placeholder={placeholder} />
+        </span>
         <SelectPrimitive.Icon>
           <ChevronDown className="size-4 opacity-60" />
         </SelectPrimitive.Icon>

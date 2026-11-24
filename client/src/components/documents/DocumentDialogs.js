@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Download, FileUp, UploadCloud } from 'lucide-react'
 import { DOCUMENT_TYPES, INTERNAL_DOCUMENT_TYPES, ALLOWED_UPLOAD_MIME_TYPES, humanize } from '@shared/constants.js'
 import { documentsService, saveBlob } from '@/services/documentsService.js'
+import { withRequestSignal } from '@/services/apiClient.js'
 import { useAction } from '@/hooks/useApi.js'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog.js'
 import { Button } from '@/components/ui/button.js'
@@ -192,17 +193,27 @@ export function DocumentPreviewDialog({ open, onOpenChange, document }) {
 
   useEffect(() => {
     if (!open || !document) return undefined
+    // Closing the dialog or switching documents aborts the download; a late
+    // response never creates an object URL that nobody would revoke.
+    let cancelled = false
     let objectUrl
+    const controller = new AbortController()
     setUrl(null)
     setError(null)
-    documentsService
-      .download(document.id, 'inline')
+    withRequestSignal(controller.signal, () => documentsService.download(document.id, 'inline'))
       .then((blob) => {
+        if (cancelled) return
         objectUrl = URL.createObjectURL(blob)
         setUrl(objectUrl)
       })
-      .catch((err) => setError(err.message))
-    return () => objectUrl && URL.revokeObjectURL(objectUrl)
+      .catch((err) => {
+        if (!cancelled && err?.name !== 'AbortError') setError(err.message)
+      })
+    return () => {
+      cancelled = true
+      controller.abort()
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
   }, [open, document])
 
   return (

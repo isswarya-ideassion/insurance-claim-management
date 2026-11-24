@@ -229,3 +229,19 @@ describe('end-to-end recognition', () => {
     expect(out.lines).toHaveLength(0)
   })
 })
+
+describe('OCR: thin glyphs and stacked marks', () => {
+  // A hyphen at print size 4 is 4 px tall: fewer rows than the 8x8 descriptor
+  // grid. It used to read as "?" inside words at even sizes (HP?HLT, X?RAY).
+  it('reads hyphens inside words and numbers at every print size', () => {
+    for (const scale of [2, 3, 4, 5, 6, 7, 8]) {
+      const { binary, width, height } = renderText(['POLICY HP-HLT-E2E101 X-RAY 044-4211'], { scale, padding: 16 })
+      expect(recognize(binary, width, height).text, `scale ${scale}`).toBe('POLICY HP-HLT-E2E101 X-RAY 044-4211')
+    }
+  })
+
+  it('reads a colon as one character, not two full stops', () => {
+    const { binary, width, height } = renderText(['GRAND TOTAL: RS. 18,450.00', 'BILL DATE: 19/11/2026'], { scale: 4, padding: 16 })
+    expect(recognize(binary, width, height).text).toBe('GRAND TOTAL: RS. 18,450.00\nBILL DATE: 19/11/2026')
+  })
+})

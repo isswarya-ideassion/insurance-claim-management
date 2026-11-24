@@ -35,6 +35,7 @@ import { notify, claimLink, userIdsWithRole } from '../../services/notification.
 import { claimantContacts, presentClaimForCustomer, presentClaimForStaff, presentClaims, profileMap, nameOf } from '../../services/presenters.js'
 import { presentPolicy, presentPolicyWithPayee } from '../policies/policies.service.js'
 import { submissionReadySchema } from './claims.validators.js'
+import { autopilotActionsForClaim, queueAutopilotForClaim } from '../automation/autopilot.hooks.js'
 
 const DRAFT_FIELD_MAP = {
   claimType: 'claim_type',
@@ -218,7 +219,14 @@ async function createRequiredArtifacts(t, claim) {
   }
 }
 
-export async function submitClaim(ctx, id, { submissionKey, confirmSeparateClaim }) {
+export async function submitClaim(ctx, id, input) {
+  const result = await submitClaimTx(ctx, id, input)
+  // Beacon AI Auto-Pilot picks up the new claim for intake (when lifecycle triggers are on).
+  if (!result.replayed) queueAutopilotForClaim(ctx, result.claim.id, 'SUBMITTED')
+  return result
+}
+
+async function submitClaimTx(ctx, id, { submissionKey, confirmSeparateClaim }) {
   return ctx.db.tx(async (t) => {
     if (submissionKey) {
       const replay = await t.findOne('claims', { submission_key: submissionKey })
@@ -501,6 +509,8 @@ export async function getClaimDetail(ctx, id) {
     requiredDocuments: (await ctx.db.findMany('artifact_requirements', { where: { claim_id: id, is_required: true }, columns: ['doc_type'] })).map((r) => r.doc_type),
     missingDocuments: claim.document_exception_at ? [] : missingDocs,
     complianceHold: await hasActiveComplianceHold(ctx.db, id),
+    // Beacon AI Auto-Pilot attribution: what it completed or escalated on this claim.
+    autopilot: can(ctx.actor.roles, 'autopilot.view') ? await autopilotActionsForClaim(ctx.db, id) : [],
     duplicateOf,
     counts: { openTasks, openRequests, pendingDocs },
     intakeChecklist: INTAKE_CHECKLIST.map((item) => ({ ...item, ...(claim.intake_checklist?.[item.key] || { checked: false }) })),
@@ -548,7 +558,7 @@ export async function getNextSteps(ctx, id) {
 }
 
 export async function changeStatus(ctx, id, { toStatus, reason, customerMessage }) {
-  return ctx.db.tx(async (t) => {
+  const updated = await ctx.db.tx(async (t) => {
     await loadAccessibleClaim(t, ctx.actor, id)
     const claim = await lockClaim(t, id)
     if (toStatus === 'SUBMITTED' && claim.status === 'DRAFT') {
@@ -556,6 +566,8 @@ export async function changeStatus(ctx, id, { toStatus, reason, customerMessage 
     }
     return transitionClaim(ctx, t, claim, toStatus, { reason, customerMessage })
   })
+  queueAutopilotForClaim(ctx, id, `STATUS_${toStatus}`)
+  return updated
 }
 
 // ---------------------------------------------------------------------------

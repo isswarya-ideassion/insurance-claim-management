@@ -1,17 +1,11 @@
-import { useEffect, useState } from 'react'
 import { Search, X } from 'lucide-react'
 import { Input } from '@/components/ui/input.js'
-import { useDebounce } from '@/hooks/useApi.js'
+import { useDebouncedField } from '@/hooks/useDebounce.js'
 import { cn } from '@/lib/utils.js'
 
-export function SearchInput({ value = '', onChange, placeholder = 'Search…', className, label = 'Search' }) {
-  const [text, setText] = useState(value)
-  const debounced = useDebounce(text, 350)
-
-  useEffect(() => setText(value), [value])
-  useEffect(() => {
-    if (debounced !== value) onChange(debounced)
-  }, [debounced])
+/** Search box that updates the list only after the user pauses typing. */
+export function SearchInput({ value = '', onChange, placeholder = 'Search…', className, label = 'Search', delayMs = 350 }) {
+  const [text, setText] = useDebouncedField(value, onChange, delayMs)
 
   return (
     <div className={cn('relative', className)}>
@@ -24,4 +18,13 @@ export function SearchInput({ value = '', onChange, placeholder = 'Search…', c
       )}
     </div>
   )
+}
+
+/**
+ * An <Input> for a list filter (dates, references): typing updates the field
+ * at once, the filter (and its query) only after a pause.
+ */
+export function DebouncedInput({ value = '', onValueChange, delayMs = 400, ...props }) {
+  const [text, setText] = useDebouncedField(value, onValueChange, delayMs)
+  return <Input {...props} value={text} onChange={(e) => setText(e.target.value)} />
 }

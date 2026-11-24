@@ -33,6 +33,16 @@ async function latestRunFor(db, document) {
   return rows[0] || null
 }
 
+/**
+ * Scans the document's current version unless it already has a run (sharing
+ * a scan already in progress), then returns the latest run or null. Used by
+ * Beacon Auto-Pilot; the caller has done the access checks.
+ */
+export async function ensureLatestScan(ctx, document, claim, trigger) {
+  const outcome = await scanOnce(ctx, document, claim, trigger)
+  return { run: await latestRunFor(ctx.db, document), errorCode: outcome.errorCode || null }
+}
+
 function scanOnce(ctx, document, claim, trigger) {
   const key = `${document.id}:${document.version}`
   if (inFlight.has(key)) return inFlight.get(key)

@@ -7,6 +7,7 @@ import { PageHeader } from '@/components/common/PageHeader.js'
 import { KpiCard, KpiGrid } from '@/components/common/KpiCard.js'
 import { CardsSkeleton, ErrorState } from '@/components/common/States.js'
 import { MotionPage } from '@/components/common/MotionPage.js'
+import { AutopilotControlBar } from '@/components/automation/AutopilotControlBar.js'
 import { ChartCard, SimpleBarChart, rowsHeight } from '@/components/dashboard/Charts.js'
 import { ClaimTable } from '@/components/claims/ClaimTable.js'
 import { TaskTable } from '@/components/tasks/TaskComponents.js'
@@ -28,6 +29,7 @@ export default function OperationsDashboard() {
   return (
     <MotionPage>
       <PageHeader title="Claims Operations" description="New claims are assigned to you automatically. Verify coverage, collect and verify payee details, and route each claim." actions={<Button asChild><Link to="/claims">Open claims queue</Link></Button>} />
+      <AutopilotControlBar onSweep={() => Promise.all([stats.reload(), mine.reload(), tasks.reload()])} />
       {stats.error && <ErrorState error={stats.error} onRetry={stats.reload} />}
       {!s && !stats.error ? (
         <CardsSkeleton count={10} />

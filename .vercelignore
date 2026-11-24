@@ -16,3 +16,6 @@ server/tests/
 server/scripts/
 **/*.md
 !README.md
+
+# Generated E2E test documents (server/scripts/generate-e2e-assets.js)
+demo-assets/

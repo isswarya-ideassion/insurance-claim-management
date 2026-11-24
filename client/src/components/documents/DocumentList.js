@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu.js'
 import { cn } from '@/lib/utils.js'
 import { DocumentPreviewDialog, ReviewDocumentDialog, UploadDocumentDialog } from './DocumentDialogs.js'
+import { AiEscalatedBadge, AutoHandledBadge } from '@/components/automation/BeaconBadges.js'
 import { formatDateTime, formatFileSize, formatRelative } from '@/utils/format.js'
 
 export function RequiredDocumentsChecklist({ required = [], documents = [], exception }) {
@@ -105,6 +106,11 @@ export function DocumentList({ documents, claimId, customer = false, canUpload =
                 )}
                 {!customer && doc.status === 'PENDING_REVIEW' && (
                   <p className="mt-0.5 text-xs text-muted-foreground">Reviewer: {doc.reviewer_name || 'unassigned'}</p>
+                )}
+                {!customer && (doc.auto_handled_by_beacon || (doc.status === 'PENDING_REVIEW' && doc.ai_escalated_at)) && (
+                  <div className="mt-1">
+                    {doc.auto_handled_by_beacon ? <AutoHandledBadge /> : <AiEscalatedBadge reason={doc.ai_escalation_reason} />}
+                  </div>
                 )}
               </div>
             </div>

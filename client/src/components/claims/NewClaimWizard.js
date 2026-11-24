@@ -8,6 +8,7 @@ import { toast } from 'sonner'
 import { LOSS_TYPES, POLICY_TYPE_LABELS, REQUIRED_DOCUMENTS, humanize, indianMobileDigits } from '@shared/constants.js'
 import { claimsService, policiesService } from '@/services/claimsService.js'
 import { documentsService } from '@/services/documentsService.js'
+import { withRequestSignal } from '@/services/apiClient.js'
 import { useAuth } from '@/context/AuthContext.js'
 import { claimFormSchema, STEP_FIELDS, serverFieldToForm, stepForField, toDraftPayload } from '@/schemas/claimSchemas.js'
 import { FormField, KeyValue } from '@/components/common/FormField.js'
@@ -119,13 +120,15 @@ export function NewClaimWizard({ draftId: initialDraftId, initialPolicy }) {
 
   useEffect(() => {
     let cancelled = false
+    const controller = new AbortController()
     async function load() {
       try {
-        const res = await policiesService.list({ pageSize: 100 })
+        const res = await withRequestSignal(controller.signal, () => policiesService.list({ pageSize: 100 }))
         if (cancelled) return
         setPolicies(res.data)
         if (initialDraftId) {
-          const detail = await claimsService.get(initialDraftId)
+          const detail = await withRequestSignal(controller.signal, () => claimsService.get(initialDraftId))
+          if (cancelled) return
           const c = detail.claim
           if (c.status !== 'DRAFT') {
             navigate(`/customer/claims/${c.id}`, { replace: true })
@@ -149,10 +152,11 @@ export function NewClaimWizard({ draftId: initialDraftId, initialPolicy }) {
           })
           setStep(c.draft_step || 1)
           setMaxReached(c.draft_step || 1)
-          setDocuments(await documentsService.list(initialDraftId))
+          const docs = await withRequestSignal(controller.signal, () => documentsService.list(initialDraftId))
+          if (!cancelled) setDocuments(docs)
         }
       } catch (err) {
-        toast.error(err.message)
+        if (!cancelled && err?.name !== 'AbortError') toast.error(err.message)
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -160,6 +164,7 @@ export function NewClaimWizard({ draftId: initialDraftId, initialPolicy }) {
     load()
     return () => {
       cancelled = true
+      controller.abort()
     }
   }, [initialDraftId])
 
@@ -170,18 +175,25 @@ export function NewClaimWizard({ draftId: initialDraftId, initialPolicy }) {
 
   useEffect(() => {
     if (!policyNumber) return setEligibility(null)
+    let cancelled = false
+    const controller = new AbortController()
     const handle = setTimeout(() => {
-      policiesService
-        .eligibility({
+      withRequestSignal(controller.signal, () =>
+        policiesService.eligibility({
           policyNumber,
           lossDate: lossDate ? new Date(lossDate).toISOString() : undefined,
           lossType: lossType || undefined,
           estimatedLoss: estimatedLoss === '' ? undefined : Number(estimatedLoss),
-        })
-        .then(setEligibility)
-        .catch(() => setEligibility(null))
+        }),
+      )
+        .then((result) => !cancelled && setEligibility(result))
+        .catch((err) => !cancelled && err?.name !== 'AbortError' && setEligibility(null))
     }, 300)
-    return () => clearTimeout(handle)
+    return () => {
+      cancelled = true
+      clearTimeout(handle)
+      controller.abort()
+    }
   }, [policyNumber, lossDate, lossType, estimatedLoss])
 
   async function saveDraft(nextStep = step, { silent = false } = {}) {
