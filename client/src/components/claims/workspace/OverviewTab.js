@@ -76,7 +76,9 @@ function IntakePanel({ detail, reload }) {
     <SectionCard title="Intake & coverage verification" description="Before the claim moves on: confirm coverage, complete the checklist, and collect and verify the payee details.">
       <div className="grid gap-6 lg:grid-cols-2">
         <div>
-          <p className="text-sm font-medium">Coverage verification</p>
+          <p className="text-sm font-medium">
+            Coverage verification <span className="text-red-600">*</span>
+          </p>
           <div className="mt-2 rounded-lg border p-3">
             {coverage ? (
               <div className={`text-sm ${coverage.result === 'COVERED' ? 'text-emerald-700' : coverage.result === 'NOT_COVERED' ? 'text-red-700' : 'text-amber-700'}`}>
