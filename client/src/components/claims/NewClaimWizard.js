@@ -17,6 +17,7 @@ import { ConfirmDialog } from '@/components/common/ConfirmDialog.js'
 import { Button } from '@/components/ui/button.js'
 import { Input, Textarea } from '@/components/ui/input.js'
 import { Select } from '@/components/ui/select.js'
+import { FormDateTimePicker } from '@/components/ui/date-time-picker.js'
 import { Checkbox } from '@/components/ui/misc.js'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog.js'
 import { RequiredDocumentsChecklist } from '@/components/documents/DocumentList.js'
@@ -515,11 +516,7 @@ const medicalLabels = {
                   error={errors.lossDate?.message}
                   required
                 >
-                  <Input
-                    type="datetime-local"
-                    max={toDateTimeLocal(new Date())}
-                    {...register('lossDate')}
-                  />
+                  <FormDateTimePicker name="lossDate" control={control} max={toDateTimeLocal(new Date())} />
                 </FormField>
                {isMedicalClaim && (
               <FormField

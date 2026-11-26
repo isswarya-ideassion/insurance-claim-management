@@ -1,14 +1,36 @@
-import { useState } from 'react'
+import { forwardRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { AlertCircle, LogIn } from 'lucide-react'
+import { AlertCircle, Eye, EyeOff, LogIn } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext.js'
 import { loginSchema } from '@/schemas/authSchemas.js'
 import { DEMO_ACCOUNTS, DEMO_PASSWORD } from '@/constants/config.js'
 import { FormField } from '@/components/common/FormField.js'
 import { Button } from '@/components/ui/button.js'
 import { Input } from '@/components/ui/input.js'
+
+/**
+ * Password field with a show/hide toggle. The toggle is a sibling of the input,
+ * so FormField's id and aria props (and react-hook-form's ref) reach the <input> itself.
+ */
+const PasswordInput = forwardRef(function PasswordInput(props, ref) {
+  const [showPassword, setShowPassword] = useState(false)
+  return (
+    <div className="relative">
+      <Input ref={ref} type={showPassword ? 'text' : 'password'} className="pr-10" {...props} />
+      <button
+        type="button"
+        onClick={() => setShowPassword((shown) => !shown)}
+        aria-label={showPassword ? 'Hide password' : 'Show password'}
+        aria-pressed={showPassword}
+        className="absolute inset-y-0 right-0 flex w-10 items-center justify-center rounded-r-md text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        {showPassword ? <EyeOff className="size-4" aria-hidden="true" /> : <Eye className="size-4" aria-hidden="true" />}
+      </button>
+    </div>
+  )
+})
 
 export default function LoginPage() {
   const { login, demoData, serverUnreachable } = useAuth()
@@ -55,7 +77,7 @@ export default function LoginPage() {
           <Input type="email" autoComplete="email" {...register('email')} />
         </FormField>
         <FormField label="Password" error={formState.errors.password?.message} required>
-          <Input type="password" autoComplete="current-password" {...register('password')} />
+          <PasswordInput autoComplete="current-password" {...register('password')} />
         </FormField>
         <div className="flex justify-end">
           <Link to="/forgot-password" className="text-sm font-medium text-accent hover:underline">
