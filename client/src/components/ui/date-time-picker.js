@@ -26,10 +26,22 @@ export function formatDateTime({ y, mo, d, h, mi }) {
   return `${y}-${pad(mo)}-${pad(d)}T${pad(h)}:${pad(mi)}`
 }
 
-function displayValue(value) {
+/** 24-hour hour (0-23) -> the 12-hour clock shown to users: hour 1-12 plus AM/PM. */
+export function to12(h) {
+  return { hour12: h % 12 || 12, period: h < 12 ? 'AM' : 'PM' }
+}
+
+/** 12-hour clock (1-12) plus AM/PM -> 24-hour hour (0-23). 12 AM is 00, 12 PM is 12. */
+export function to24(hour12, period) {
+  return (hour12 % 12) + (period === 'PM' ? 12 : 0)
+}
+
+/** Indian display format: "DD-MM-YYYY, hh:mm AM/PM", e.g. "25-11-2026, 01:58 PM". */
+export function displayDateTime(value) {
   const p = parseDateTime(value)
   if (!p) return null
-  return `${pad(p.d)} ${MONTHS_SHORT[p.mo - 1]} ${p.y}, ${pad(p.h)}:${pad(p.mi)}`
+  const { hour12, period } = to12(p.h)
+  return `${pad(p.d)}-${pad(p.mo)}-${p.y}, ${pad(hour12)}:${pad(p.mi)} ${period}`
 }
 
 const daysIn = (y, mo) => new Date(y, mo, 0).getDate()
@@ -107,9 +119,20 @@ export const DateTimePicker = forwardRef(function DateTimePicker(
     setDraft(clampToMax(candidate, max))
   }
 
-  function setTime(part, n) {
+  function setMinute(mi) {
     const base = draft || clampToMax(nowParts(), max)
-    setDraft(clampToMax({ ...base, [part]: n }, max))
+    setDraft(clampToMax({ ...base, mi }, max))
+  }
+
+  // Hour and period are chosen on the 12-hour clock; the draft keeps the 24-hour value.
+  function setHour12(hour12) {
+    const base = draft || clampToMax(nowParts(), max)
+    setDraft(clampToMax({ ...base, h: to24(hour12, to12(base.h).period) }, max))
+  }
+
+  function setPeriod(period) {
+    const base = draft || clampToMax(nowParts(), max)
+    setDraft(clampToMax({ ...base, h: to24(to12(base.h).hour12, period) }, max))
   }
 
   function goToday() {
@@ -134,12 +157,15 @@ export const DateTimePicker = forwardRef(function DateTimePicker(
   const viewKey = view.y * 12 + view.mo
   const canGoNext = maxMonthKey === null || viewKey < maxMonthKey
 
-  // Hours and minutes past the maximum are disabled on the maximum day.
+  // On the maximum day, no time after the maximum can be chosen, checked in 12-hour terms.
   const onMaxDay = !!draft && maxDay && dayKey(draft) === maxDay
-  const hourDisabled = (h) => onMaxDay && h > maxParts.h
+  const current12 = to12(draft ? draft.h : 0)
+  const hourDisabled = (hour12) => onMaxDay && to24(hour12, current12.period) > maxParts.h
+  // PM starts at 12:00; if the maximum is earlier than that, no PM time is left that day.
+  const periodDisabled = (period) => onMaxDay && period === 'PM' && maxParts.h < 12
   const minuteDisabled = (mi) => onMaxDay && draft.h === maxParts.h && mi > maxParts.mi
 
-  const shown = displayValue(value)
+  const shown = displayDateTime(value)
 
   return (
     <div ref={rootRef} className={cn('relative', className)}>
@@ -231,28 +257,43 @@ export const DateTimePicker = forwardRef(function DateTimePicker(
             <label className="sr-only" htmlFor={`${panelId}-h`}>Hour</label>
             <select
               id={`${panelId}-h`}
-              value={draft ? draft.h : 0}
-              onChange={(e) => setTime('h', Number(e.target.value))}
+              value={current12.hour12}
+              onChange={(e) => setHour12(Number(e.target.value))}
               disabled={!draft}
-              className="h-8 flex-1 rounded-md border border-input bg-card px-2 text-sm"
+              className="h-8 min-w-0 flex-1 rounded-md border border-input bg-card px-2 text-sm"
             >
-              {Array.from({ length: 24 }, (_, h) => (
-                <option key={h} value={h} disabled={hourDisabled(h)}>
-                  {pad(h)} h
+              {Array.from({ length: 12 }, (_, i) => i + 1).map((hour12) => (
+                <option key={hour12} value={hour12} disabled={hourDisabled(hour12)}>
+                  {pad(hour12)}
                 </option>
               ))}
             </select>
+            <span aria-hidden="true" className="text-muted-foreground">:</span>
             <label className="sr-only" htmlFor={`${panelId}-m`}>Minute</label>
             <select
               id={`${panelId}-m`}
               value={draft ? draft.mi : 0}
-              onChange={(e) => setTime('mi', Number(e.target.value))}
+              onChange={(e) => setMinute(Number(e.target.value))}
               disabled={!draft}
-              className="h-8 flex-1 rounded-md border border-input bg-card px-2 text-sm"
+              className="h-8 min-w-0 flex-1 rounded-md border border-input bg-card px-2 text-sm"
             >
               {Array.from({ length: 60 }, (_, mi) => (
                 <option key={mi} value={mi} disabled={minuteDisabled(mi)}>
-                  {pad(mi)} min
+                  {pad(mi)}
+                </option>
+              ))}
+            </select>
+            <label className="sr-only" htmlFor={`${panelId}-p`}>AM or PM</label>
+            <select
+              id={`${panelId}-p`}
+              value={current12.period}
+              onChange={(e) => setPeriod(e.target.value)}
+              disabled={!draft}
+              className="h-8 min-w-0 flex-1 rounded-md border border-input bg-card px-2 text-sm"
+            >
+              {['AM', 'PM'].map((period) => (
+                <option key={period} value={period} disabled={periodDisabled(period)}>
+                  {period}
                 </option>
               ))}
             </select>
