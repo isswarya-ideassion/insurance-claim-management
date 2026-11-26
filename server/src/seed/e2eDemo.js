@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { PRIVACY_NOTICE_VERSION } from '../../../shared/constants.js'
 import { DEMO_DOMAIN } from './demoData.js'
+import { hashPassword } from '../services/authProvider.js'
 
 /**
  * FICTIONAL E2E DEMO DATA: two clean health policyholders (Meera, Rohan), their
@@ -76,6 +77,17 @@ export function buildE2eScenario(today = new Date()) {
 }
 
 /**
+ * Makes an existing E2E account log in with `password` and be active. Writes
+ * the login hash the API reads (auth.users.encrypted_password, scrypt) and the
+ * profile flag (public.users.is_active). Nothing else about the account changes.
+ */
+export async function syncE2eAccount(db, { id }, password) {
+  if (!password) throw new Error('syncE2eAccount needs the DEMO_PASSWORD')
+  await db.query('update auth.users set encrypted_password = $2 where id = $1', [id, await hashPassword(password)])
+  await db.query('update public.users set is_active = true where id = $1 and is_active is distinct from true', [id])
+}
+
+/**
  * Refuses a seed target that is not clearly a local database unless the caller
  * explicitly allowed it. Pure, so the rule is unit-tested.
  */
@@ -104,7 +116,12 @@ export async function seedE2eDemo(deps, { receipt, today = new Date() } = {}) {
 
   const ensureUser = async (u) => {
     const existing = await db.findOne('users', { email: u.email })
-    if (existing) return existing
+    if (existing) {
+      // Re-running the seed always syncs the login password to DEMO_PASSWORD and reactivates the account.
+      await syncE2eAccount(db, existing, config.DEMO_PASSWORD)
+      log.push(`synced login password and active flag for ${u.email}`)
+      return existing
+    }
     const created = await authProvider.createUser({ email: u.email, password: config.DEMO_PASSWORD, fullName: u.fullName, phone: u.phone, staff: false })
     await db.query(`insert into public.user_roles (user_id, role_code) values ($1, 'CLIENT') on conflict do nothing`, [created.id])
     await db.query(`insert into public.consents (subject_id, consent_type, notice_version, granted) values ($1, 'PRIVACY_NOTICE', $2, true)`, [created.id, PRIVACY_NOTICE_VERSION])
