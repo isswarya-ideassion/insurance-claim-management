@@ -16,3 +16,6 @@ docs/
 
 # Generated E2E test documents (server/scripts/generate-e2e-assets.js)
 demo-assets/
+
+# Personal Claude Code settings
+.claude/settings.local.json
