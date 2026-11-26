@@ -55,3 +55,19 @@ export async function migrate(executor, { log = () => {} } = {}) {
   })
   return applied
 }
+
+/**
+ * Migration files not yet recorded in app_meta.schema_migrations. Read-only, so
+ * a serverless cold start can report drift without applying anything.
+ */
+export async function pendingMigrations(executor) {
+  let applied = new Set()
+  try {
+    const { rows } = await executor.query('select name from app_meta.schema_migrations')
+    applied = new Set(rows.map((r) => r.name))
+  } catch (err) {
+    // Fresh database: the tracking table does not exist yet, so everything is pending.
+    if (err?.code !== '42P01') throw err
+  }
+  return migrationFiles().filter((name) => !applied.has(name))
+}

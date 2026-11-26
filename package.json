@@ -22,6 +22,7 @@
     "db:migrate": "npm run db:migrate -w server",
     "db:status": "npm run db:status -w server",
     "db:seed-demo": "npm run db:seed-demo -w server",
+    "db:seed-e2e": "npm run db:seed-e2e -w server --",
     "db:import-supabase": "npm run db:import-supabase -w server --"
   },
   "devDependencies": {

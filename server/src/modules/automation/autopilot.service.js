@@ -13,7 +13,7 @@ import {
   ROLES,
   humanize,
 } from '../../../../shared/constants.js'
-import { businessRule, conflict } from '../../utils/errors.js'
+import { businessRule, conflict, isMissingSchemaError } from '../../utils/errors.js'
 import { formatInr, hoursFromNow } from '../../utils/format.js'
 import { requirePermission } from '../../services/access.service.js'
 import { recordAudit } from '../../services/audit.service.js'
@@ -172,8 +172,24 @@ export function payeeRisk(output) {
 // State
 // ---------------------------------------------------------------------------
 
+const DEFAULT_STATE = Object.freeze({ id: 1, enabled: null })
+
+/**
+ * Until the Auto-Pilot migration (20261120000019) is applied, its tables and
+ * columns do not exist. Reads fall back to "nothing recorded yet" rather than
+ * failing the request; anything other than a missing table/column still throws.
+ */
+function orEmpty(fallback, what) {
+  return (err) => {
+    if (!isMissingSchemaError(err)) throw err
+    logger.warn(`autopilot: ${what} unavailable (${err.message}); apply pending migrations (npm run db:migrate)`)
+    return fallback
+  }
+}
+
 async function loadState(db) {
-  return (await db.findOne('autopilot_state', { id: 1 })) || { id: 1, enabled: null }
+  const state = await db.findOne('autopilot_state', { id: 1 }).catch(orEmpty(null, 'autopilot_state'))
+  return state || { ...DEFAULT_STATE }
 }
 
 /** The toggle once used; until then the AI_AUTOPILOT_ENABLED setting. */
@@ -887,7 +903,7 @@ export async function getAutopilotSummary(ctx, { days = 30 } = {}) {
       `select action, stage, outcome, reason_code, count(*)::int as n, coalesce(sum(minutes_saved), 0)::int as minutes
          from public.autopilot_actions where created_at >= $1 group by action, stage, outcome, reason_code`,
       [since],
-    ),
+    ).catch(orEmpty([], 'autopilot_actions')),
     ctx.db.query(
       `select
          (select count(*) from public.documents where status = 'PENDING_REVIEW' and ai_escalated_at is not null)::int as documents,
@@ -898,12 +914,12 @@ export async function getAutopilotSummary(ctx, { days = 30 } = {}) {
          (select count(*) from public.reviews where checkpoint_type = 'COMPLIANCE' and ai_priority and status = any($2::text[]))::int as compliance,
          (select count(*) from public.tasks where created_by = $3 and status in ('OPEN', 'IN_PROGRESS'))::int as payee`,
       [INTAKE_STATUSES, OPEN_COMPLIANCE_STATUSES, BEACON_AUTOPILOT_USER_ID],
-    ),
+    ).catch(orEmpty([{ documents: 0, intake: 0, routing: 0, compliance: 0, payee: 0 }], 'exception counts')),
     ctx.db.query(
       `select a.id, a.created_at, a.stage, a.action, a.outcome, a.reason_code, a.reason, a.claim_id, a.document_id, c.claim_number
          from public.autopilot_actions a join public.claims c on c.id = a.claim_id
         order by a.created_at desc limit 12`,
-    ),
+    ).catch(orEmpty([], 'recent actions')),
     loadState(ctx.db),
   ])
 

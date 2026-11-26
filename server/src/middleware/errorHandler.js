@@ -28,7 +28,12 @@ export function errorHandler(err, req, res, next) {
     logger.error('unhandled error', { requestId: req.id, error: err?.message, stack: err?.stack })
     error = new AppError(500, 'INTERNAL_ERROR', 'An unexpected error occurred')
   } else if (error.status >= 500) {
-    logger.error('server error', { requestId: req.id, code: error.code, error: error.message })
+    logger.error('server error', {
+      requestId: req.id,
+      code: error.code,
+      error: error.message,
+      ...(err !== error && err?.message ? { cause: err.message } : {}),
+    })
   }
 
   res.status(error.status).json({

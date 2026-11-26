@@ -19,6 +19,15 @@ export const businessRule = (code, message, details) => new AppError(409, code, 
 
 const TRIGGER_CODE = /^([A-Z_]+):\s*(.*)$/s
 
+/**
+ * Postgres "undefined_table" (42P01) / "undefined_column" (42703): the database
+ * is behind the code, i.e. a migration has not been applied (on Vercel,
+ * migrations are a deploy step: npm run db:migrate).
+ */
+export function isMissingSchemaError(err) {
+  return err?.code === '42P01' || err?.code === '42703'
+}
+
 /** Converts Postgres errors (unique violations, check constraints, trigger exceptions) into AppErrors. */
 export function fromDatabaseError(err) {
   if (!err || err instanceof AppError) return err
@@ -35,6 +44,10 @@ export function fromDatabaseError(err) {
       return new AppError(422, 'INVALID_REFERENCE', 'A referenced record does not exist.', {
         constraint: err.constraint,
       })
+    case '42P01':
+    case '42703':
+      // Logged with the Postgres message by the error handler; the client only learns the schema is behind.
+      return new AppError(503, 'SCHEMA_OUT_OF_DATE', 'The database schema is out of date. An administrator needs to apply pending migrations.')
     case '22P02':
       return badRequest('Invalid identifier or value format.')
     case 'P0001': {

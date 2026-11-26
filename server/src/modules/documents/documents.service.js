@@ -9,9 +9,10 @@ import {
   BEACON_AUTOPILOT_USER_ID,
   humanize,
 } from '../../../../shared/constants.js'
-import { AppError, businessRule, forbidden, notFound, validationError } from '../../utils/errors.js'
+import { AppError, businessRule, forbidden, isMissingSchemaError, notFound, validationError } from '../../utils/errors.js'
 import { sanitizeFileName, hoursFromNow } from '../../utils/format.js'
 import { pageMeta, toOffset } from '../../utils/http.js'
+import { logger } from '../../config/logger.js'
 import {
   claimScope,
   loadAccessibleClaim,
@@ -284,9 +285,17 @@ export async function reviewQueue(ctx, query) {
   const where = { claim_id: { in: claimIds }, status: query.status, doc_type: query.docType }
   if (query.mine === 'true') where.reviewer_id = ctx.actor.id
   // Documents Beacon Auto-Pilot escalated (fraud indicator or unreadable) come first, newest escalation on top.
-  const orderBy = query.status === 'PENDING_REVIEW' ? [['ai_escalated_at', 'desc'], ['received_at', 'asc']] : [['reviewed_at', 'desc']]
+  const pending = query.status === 'PENDING_REVIEW'
+  const orderBy = pending ? [['ai_escalated_at', 'desc'], ['received_at', 'asc']] : [['reviewed_at', 'desc']]
+  const page = (order) => ctx.db.findMany('documents', { where, orderBy: order, ...toOffset(query) })
   const [docs, total] = await Promise.all([
-    ctx.db.findMany('documents', { where, orderBy, ...toOffset(query) }),
+    page(orderBy).catch((err) => {
+      // documents.ai_escalated_at arrives with the Auto-Pilot migration; until it
+      // is applied the queue keeps its plain oldest-first order instead of failing.
+      if (!pending || !isMissingSchemaError(err)) throw err
+      logger.warn('review queue: documents.ai_escalated_at missing, apply pending migrations (npm run db:migrate)')
+      return page([['received_at', 'asc']])
+    }),
     ctx.db.count('documents', where),
   ])
   const claims = docs.length
